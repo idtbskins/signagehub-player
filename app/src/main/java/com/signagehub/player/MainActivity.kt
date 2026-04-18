@@ -15,7 +15,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -186,7 +188,16 @@ class MainActivity : AppCompatActivity() {
             builtInZoomControls = false
             displayZoomControls = false
         }
-        webView.webChromeClient = WebChromeClient()
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(request: PermissionRequest) {
+                runOnUiThread { request.grant(request.resources) }
+            }
+
+            override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                Log.d(TAG, "[web:${message.messageLevel()}] ${message.message()} @ ${message.sourceId()}:${message.lineNumber()}")
+                return true
+            }
+        }
         webView.webViewClient = SignageWebClient(
             context = this,
             configStore = configStore,
