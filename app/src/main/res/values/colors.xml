@@ -1,0 +1,7 @@
+<resources>
+    <color name="player_background">#050505</color>
+    <color name="player_foreground">#F5F5F5</color>
+    <color name="player_muted">#9FA6AD</color>
+    <color name="player_accent">#2D6AE3</color>
+    <color name="player_error">#D94848</color>
+</resources>
