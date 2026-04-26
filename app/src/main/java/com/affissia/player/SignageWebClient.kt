@@ -1,4 +1,4 @@
-package com.signagehub.player
+package com.affissia.player
 
 import android.content.Context
 import android.graphics.Bitmap

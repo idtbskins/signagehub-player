@@ -1,4 +1,4 @@
-package com.signagehub.player
+package com.affissia.player
 
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -32,6 +32,9 @@ import kotlin.system.exitProcess
 
 class MainActivity : AppCompatActivity() {
     private lateinit var configStore: ConfigStore
+    private lateinit var deviceIdentity: DeviceIdentity
+    private lateinit var heartbeat: HeartbeatScheduler
+    private lateinit var ota: OtaChecker
     private lateinit var webView: WebView
     private var wakeLock: PowerManager.WakeLock? = null
     private var longPressRunnable: Runnable? = null
@@ -41,6 +44,18 @@ class MainActivity : AppCompatActivity() {
     private var downY = 0f
     private var lastRemoteUrl: String = ""
     private val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
+    // OTA poll cadence: every hour after launch. Cheap GET; tolerates 404.
+    private val otaCheckIntervalMs: Long = 60L * 60L * 1000L
+    private val otaCheckRunnable = object : Runnable {
+        override fun run() {
+            if (!::ota.isInitialized || !::configStore.isInitialized) return
+            val url = configStore.serverUrl
+            if (url.isNotBlank()) {
+                ota.checkForUpdate(url, BuildConfig.VERSION_NAME)
+            }
+            longPressHandler.postDelayed(this, otaCheckIntervalMs)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +67,10 @@ class MainActivity : AppCompatActivity() {
             finish()
             return
         }
+
+        deviceIdentity = DeviceIdentity(this)
+        heartbeat = HeartbeatScheduler(deviceIdentity, configStore)
+        ota = OtaChecker(this)
 
         lastRemoteUrl = buildDisplayUrl(configStore.serverUrl)
 
@@ -72,12 +91,22 @@ class MainActivity : AppCompatActivity() {
         }
         enterImmersiveMode()
         acquireWakeLock()
+        // v2.0: heartbeat keeps the operator console aware of online
+        // status; OTA check ensures the device pulls new APK builds
+        // automatically (instead of needing manual reinstall).
+        if (::heartbeat.isInitialized) heartbeat.start()
+        if (::ota.isInitialized) {
+            longPressHandler.removeCallbacks(otaCheckRunnable)
+            longPressHandler.post(otaCheckRunnable)
+        }
     }
 
     override fun onPause() {
         if (::webView.isInitialized) {
             webView.onPause()
         }
+        if (::heartbeat.isInitialized) heartbeat.stop()
+        longPressHandler.removeCallbacks(otaCheckRunnable)
         super.onPause()
     }
 
@@ -187,6 +216,12 @@ class MainActivity : AppCompatActivity() {
             useWideViewPort = true
             builtInZoomControls = false
             displayZoomControls = false
+            // v2.0 light offline cache: respect HTTP Cache-Control from
+            // the server. If the network blip happens after content is
+            // already loaded, WebView serves from disk cache instead of
+            // showing an error. Full pre-download offline cache lands in
+            // v2.1 (server-driven manifest + local-file:// playback).
+            cacheMode = WebSettings.LOAD_DEFAULT
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) {

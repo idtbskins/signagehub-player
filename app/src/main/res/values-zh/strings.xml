@@ -1,12 +1,15 @@
 <resources>
-    <string name="app_name">SignageHub Player</string>
+    <string name="app_name">Affissia 播放器</string>
     <string name="setup_title">首次设置</string>
-    <string name="setup_hint">请输入 SignageHub 服务器地址</string>
-    <string name="setup_example">例如 https://192.168.1.16:5010</string>
+    <string name="setup_hint">请输入 Affissia 服务器地址</string>
+    <string name="setup_example">例如 https://signage.bravotech.it</string>
     <string name="setup_save">保存</string>
     <string name="setup_invalid_url">服务器地址必须以 http:// 或 https:// 开头</string>
     <string name="setup_saved">服务器地址已保存。</string>
-    <string name="dialog_title">SignageHub Player</string>
+    <string name="setup_searching">正在局域网中搜索 Affissia 服务器…</string>
+    <string name="setup_found">已发现 %1$s — 点击保存即可。</string>
+    <string name="setup_not_found">未自动发现服务器。请在上方手动输入地址。</string>
+    <string name="dialog_title">Affissia 播放器</string>
     <string name="dialog_change_url">修改服务器地址</string>
     <string name="dialog_reload">重新加载</string>
     <string name="dialog_cancel">取消</string>
@@ -14,8 +17,9 @@
     <string name="error_unknown">未知错误</string>
     <string name="error_retry_toast">加载失败，3 秒后重试（%1$d/%2$d）。</string>
     <string name="error_screen_title">连接错误</string>
-    <string name="error_screen_message">无法连接到 SignageHub 服务器。</string>
+    <string name="error_screen_message">无法连接到 Affissia 服务器。</string>
     <string name="error_screen_tip">请检查 Wi-Fi、端口连通性或证书信任，然后长按 5 秒修改地址或重新加载。</string>
     <string name="error_ssl_title">SSL 证书警告</string>
     <string name="error_ssl_message">当前设备不信任服务器证书。</string>
+    <string name="brand_slogan">Mostra. Play. Vendi.</string>
 </resources>

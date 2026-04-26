@@ -1,4 +1,4 @@
-package com.signagehub.player
+package com.affissia.player
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -36,7 +36,7 @@ class ConfigStore(context: Context) {
     }
 
     companion object {
-        private const val PREFS_NAME = "signagehub_player_config"
+        private const val PREFS_NAME = "affissia_player_config"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_LAST_LOADED_AT = "last_loaded_at"
         private const val KEY_FAILED_LOAD_COUNT = "failed_load_count"

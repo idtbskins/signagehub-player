@@ -1,56 +1,95 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/player_background"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:padding="32dp">
+    android:background="@color/affissia_navy"
+    android:fillViewport="true">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
-        android:text="@string/setup_title"
-        android:textColor="@color/player_foreground"
-        android:textSize="28sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:text="@string/setup_hint"
-        android:textColor="@color/player_muted"
-        android:textSize="16sp" />
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="20dp"
-        android:text="@string/setup_example"
-        android:textColor="@color/player_muted"
-        android:textSize="14sp" />
-
-    <EditText
-        android:id="@+id/server_url_input"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:autofillHints="url"
-        android:background="@android:drawable/edit_text"
-        android:hint="@string/setup_hint"
-        android:imeOptions="actionDone"
-        android:inputType="textUri"
-        android:maxLines="1"
-        android:padding="12dp"
-        android:textColor="@color/player_foreground"
-        android:textColorHint="@color/player_muted" />
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp">
 
-    <Button
-        android:id="@+id/save_button"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="@string/setup_save" />
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:adjustViewBounds="true"
+            android:contentDescription="@string/app_name"
+            android:maxWidth="320dp"
+            android:src="@drawable/affissia_logo" />
 
-</LinearLayout>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="32dp"
+            android:letterSpacing="0.06"
+            android:text="@string/brand_slogan"
+            android:textColor="@color/affissia_orange"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="@string/setup_title"
+            android:textColor="@color/player_foreground"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="@string/setup_hint"
+            android:textColor="@color/player_muted"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="14dp"
+            android:text="@string/setup_example"
+            android:textColor="@color/player_muted"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/server_url_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints="url"
+            android:background="@android:drawable/edit_text"
+            android:hint="@string/setup_hint"
+            android:imeOptions="actionDone"
+            android:inputType="textUri"
+            android:maxLines="1"
+            android:padding="12dp"
+            android:textColor="@color/player_foreground"
+            android:textColorHint="@color/player_muted" />
+
+        <!-- Discovery status: shows "searching..." while NSD scans LAN, then
+             "found <url>" when an Affissia server is detected (auto-fills the
+             EditText above), or "not found" after a short timeout. -->
+        <TextView
+            android:id="@+id/discovery_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/setup_searching"
+            android:textColor="@color/affissia_orange"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/save_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:backgroundTint="@color/affissia_orange"
+            android:text="@string/setup_save"
+            android:textColor="@color/player_foreground" />
+
+    </LinearLayout>
+</ScrollView>

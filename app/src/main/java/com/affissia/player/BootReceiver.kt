@@ -1,4 +1,4 @@
-package com.signagehub.player
+package com.affissia.player
 
 import android.content.BroadcastReceiver
 import android.content.Context

@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.SignageHubPlayer" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <style name="Theme.AffissiaPlayer" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
@@ -9,7 +9,7 @@
         <item name="colorAccent">@color/player_accent</item>
     </style>
 
-    <style name="Theme.SignageHubPlayer.Setup" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <style name="Theme.AffissiaPlayer.Setup" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
         <item name="colorPrimary">@color/player_accent</item>
         <item name="colorPrimaryDark">@color/player_background</item>

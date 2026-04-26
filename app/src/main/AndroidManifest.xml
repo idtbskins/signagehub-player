@@ -3,8 +3,17 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Required so the mDNS / NSD discovery client can receive multicast
+         packets advertising the Affissia server on the local network. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Required for the OTA flow: after downloading the new APK from
+         the Affissia server, the player asks the system PackageInstaller
+         to replace itself. On Android 8+ the user still has to confirm
+         the install dialog (unless the device is in device-owner mode). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
@@ -13,14 +22,14 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SignageHubPlayer"
+        android:theme="@style/Theme.AffissiaPlayer"
         android:usesCleartextTraffic="true">
 
         <activity
             android:name=".SetupActivity"
             android:exported="false"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.SignageHubPlayer.Setup" />
+            android:theme="@style/Theme.AffissiaPlayer.Setup" />
 
         <activity
             android:name=".MainActivity"
@@ -29,7 +38,7 @@
             android:keepScreenOn="true"
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.SignageHubPlayer">
+            android:theme="@style/Theme.AffissiaPlayer">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -45,6 +54,20 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- FileProvider exposes the downloaded OTA APK to the system
+             PackageInstaller via a content:// URI. Authority must match
+             the one OtaChecker.launchInstaller() builds:
+             "${packageName}.fileprovider". -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
     </application>
 
 </manifest>

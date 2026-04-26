@@ -6,3 +6,4 @@ local.properties
 keystore/*.jks
 keystore/*.keystore
 app/release/
+.DS_Store
