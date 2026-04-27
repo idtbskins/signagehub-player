@@ -22,4 +22,5 @@
     <string name="error_ssl_title">SSL certificate warning</string>
     <string name="error_ssl_message">The server certificate is not trusted on this device.</string>
     <string name="brand_slogan">Mostra. Play. Vendi.</string>
+    <string name="player_pending_bind_label">Waiting to be bound...</string>
 </resources>

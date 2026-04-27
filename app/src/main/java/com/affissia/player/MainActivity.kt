@@ -21,6 +21,7 @@ import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -76,6 +77,8 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
         webView = findViewById(R.id.web_view)
+        findViewById<TextView>(R.id.device_id_overlay).text =
+            "device " + deviceIdentity.deviceId + "\n" + getString(R.string.player_pending_bind_label)
 
         configureWindow()
         configureWakeLock()

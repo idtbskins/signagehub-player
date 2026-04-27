@@ -72,7 +72,25 @@ class HeartbeatScheduler(
         }.toString()
 
         Thread {
-            postIgnore("$serverUrl/api/v1/devices/$deviceId/heartbeat", payload)
+            val code = postAndReturnCode(
+                "$serverUrl/api/v1/devices/$deviceId/heartbeat",
+                payload,
+            )
+            // 404 means the backend has no record of this device — most
+            // likely because the original announce in SetupActivity ran
+            // before the backend endpoint existed (v2.0.x devices). The
+            // backend now exists, so re-announce on the same thread to
+            // self-heal, and the next heartbeat tick (60 s later) will
+            // succeed.
+            if (code == 404) {
+                Log.d(TAG, "heartbeat 404 — re-announcing device")
+                AnnouncementClient.announce(
+                    serverUrl = serverUrl,
+                    deviceId = deviceId,
+                    deviceLabel = deviceIdentity.deviceLabel,
+                    appVersion = BuildConfig.VERSION_NAME,
+                )
+            }
         }.apply {
             isDaemon = true
             name = "heartbeat-post"
@@ -80,13 +98,14 @@ class HeartbeatScheduler(
         }
     }
 
-    private fun postIgnore(urlString: String, body: String) {
+    /** POSTs the body and returns the HTTP status code, or -1 on failure. */
+    private fun postAndReturnCode(urlString: String, body: String): Int {
         val target = try { URL(urlString) } catch (e: Exception) {
             Log.w(TAG, "bad URL: $urlString", e)
-            return
+            return -1
         }
         var conn: HttpURLConnection? = null
-        try {
+        return try {
             conn = (target.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 4_000
@@ -100,8 +119,10 @@ class HeartbeatScheduler(
             if (code !in 200..299) {
                 Log.d(TAG, "heartbeat -> HTTP $code")
             }
+            code
         } catch (e: Exception) {
             Log.d(TAG, "heartbeat failed: ${e.message}")
+            -1
         } finally {
             try { conn?.disconnect() } catch (e: Exception) { /* no-op */ }
         }

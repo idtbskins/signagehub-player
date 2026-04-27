@@ -22,4 +22,5 @@
     <string name="error_ssl_title">SSL 证书警告</string>
     <string name="error_ssl_message">当前设备不信任服务器证书。</string>
     <string name="brand_slogan">Mostra. Play. Vendi.</string>
+    <string name="player_pending_bind_label">等待绑定...</string>
 </resources>
