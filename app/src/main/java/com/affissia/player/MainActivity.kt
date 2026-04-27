@@ -85,6 +85,9 @@ class MainActivity : AppCompatActivity() {
                 webView.loadUrl(redirectUrl)
             }
         }
+        heartbeat.setOnPairCode { pairCode ->
+            reloadPendingPageWithPairCode(pairCode)
+        }
 
         lastRemoteUrl = buildDisplayUrl(configStore.serverUrl)
 
@@ -99,6 +102,7 @@ class MainActivity : AppCompatActivity() {
         configureWebView()
         installLongPressGesture()
         loadInitialContent()
+        announcePairCodeIfMissing()
     }
 
     override fun onResume() {
@@ -354,6 +358,48 @@ class MainActivity : AppCompatActivity() {
         // gracefully omits the big code badge in that case.
         val code = configStore.pairCode
         return if (code.isNotBlank()) "$base?pair_code=$code" else base
+    }
+
+    private fun announcePairCodeIfMissing() {
+        if (configStore.pairCode.isNotBlank()) {
+            return
+        }
+        val serverUrl = configStore.serverUrl
+        if (serverUrl.isBlank()) {
+            return
+        }
+        Thread {
+            val result = AnnouncementClient.announce(
+                serverUrl = serverUrl,
+                deviceId = deviceIdentity.deviceId,
+                deviceLabel = deviceIdentity.deviceLabel,
+                appVersion = BuildConfig.VERSION_NAME,
+            )
+            val pairCode = result.pairCode
+            if (result.ok && !pairCode.isNullOrBlank()) {
+                configStore.pairCode = pairCode
+                runOnUiThread { reloadPendingPageWithPairCode(pairCode) }
+            }
+        }.apply {
+            isDaemon = true
+            name = "announce-pair-code"
+            start()
+        }
+    }
+
+    private fun reloadPendingPageWithPairCode(pairCode: String) {
+        if (pairCode.isBlank() || !::webView.isInitialized) {
+            return
+        }
+        val currentUrl = webView.url ?: lastRemoteUrl
+        if (!currentUrl.contains("/display/new")) {
+            return
+        }
+        val targetUrl = buildDisplayUrl(configStore.serverUrl)
+        if (targetUrl != currentUrl) {
+            lastRemoteUrl = targetUrl
+            webView.loadUrl(targetUrl)
+        }
     }
 
     private fun onLoadError(message: String) {

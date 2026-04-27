@@ -56,7 +56,7 @@ object AnnouncementClient {
 
         val payload = JSONObject().apply {
             put("device_id", deviceId)
-            put("label", deviceLabel)
+            put("device_label", deviceLabel)
             put("app_version", appVersion)
             put("client", "affissia-player-android")
         }.toString()

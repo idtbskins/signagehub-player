@@ -57,6 +57,7 @@ class HeartbeatScheduler(
      * leaves the 6-digit pairing-code page on its own.
      */
     private var onBoundUrlProvider: (String) -> Unit = { }
+    private var onPairCodeProvider: (String) -> Unit = { }
 
     fun setLastPlayedAssetIdProvider(provider: () -> String?) {
         lastPlayedAssetIdProvider = provider
@@ -64,6 +65,10 @@ class HeartbeatScheduler(
 
     fun setOnBoundUrl(callback: (String) -> Unit) {
         onBoundUrlProvider = callback
+    }
+
+    fun setOnPairCode(callback: (String) -> Unit) {
+        onPairCodeProvider = callback
     }
 
     fun start() {
@@ -111,8 +116,7 @@ class HeartbeatScheduler(
             // likely because the original announce in SetupActivity ran
             // before the backend endpoint existed (v2.0.x devices). The
             // backend now exists, so re-announce on the same thread to
-            // self-heal, and the next heartbeat tick (60 s later) will
-            // succeed.
+            // self-heal, and the next heartbeat tick will succeed.
             if (result.code == 404) {
                 Log.d(TAG, "heartbeat 404 — re-announcing device")
                 val announced = AnnouncementClient.announce(
@@ -121,8 +125,10 @@ class HeartbeatScheduler(
                     deviceLabel = deviceIdentity.deviceLabel,
                     appVersion = BuildConfig.VERSION_NAME,
                 )
-                if (announced.ok && !announced.pairCode.isNullOrBlank()) {
-                    configStore.pairCode = announced.pairCode
+                val announcedPairCode = announced.pairCode
+                if (announced.ok && !announcedPairCode.isNullOrBlank()) {
+                    configStore.pairCode = announcedPairCode
+                    mainHandler.post { onPairCodeProvider(announcedPairCode) }
                 }
                 return@Thread
             }
@@ -148,6 +154,11 @@ class HeartbeatScheduler(
                 }
             } else {
                 bound = false
+                val pairCode = result.pairCode
+                if (!pairCode.isNullOrBlank() && configStore.pairCode != pairCode) {
+                    configStore.pairCode = pairCode
+                    mainHandler.post { onPairCodeProvider(pairCode) }
+                }
             }
         }.apply {
             isDaemon = true
@@ -160,13 +171,14 @@ class HeartbeatScheduler(
         val code: Int,
         val bound: Boolean,
         val redirectUrl: String?,
+        val pairCode: String?,
     )
 
     /** POSTs the body, returns status code + (when applicable) parsed bound/redirect_url. */
     private fun postHeartbeat(urlString: String, body: String): HeartbeatResult {
         val target = try { URL(urlString) } catch (e: Exception) {
             Log.w(TAG, "bad URL: $urlString", e)
-            return HeartbeatResult(code = -1, bound = false, redirectUrl = null)
+            return HeartbeatResult(code = -1, bound = false, redirectUrl = null, pairCode = null)
         }
         var conn: HttpURLConnection? = null
         return try {
@@ -182,21 +194,22 @@ class HeartbeatScheduler(
             val code = conn.responseCode
             if (code !in 200..299) {
                 Log.d(TAG, "heartbeat -> HTTP $code")
-                return HeartbeatResult(code = code, bound = false, redirectUrl = null)
+                return HeartbeatResult(code = code, bound = false, redirectUrl = null, pairCode = null)
             }
             val responseBody = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             val json = try { JSONObject(responseBody) } catch (e: Exception) {
                 Log.d(TAG, "heartbeat: response not JSON: ${e.message}")
-                return HeartbeatResult(code = code, bound = false, redirectUrl = null)
+                return HeartbeatResult(code = code, bound = false, redirectUrl = null, pairCode = null)
             }
             HeartbeatResult(
                 code = code,
                 bound = json.optBoolean("bound", false),
                 redirectUrl = json.optString("redirect_url", "").takeIf { it.isNotBlank() },
+                pairCode = json.optString("pair_code", "").takeIf { it.isNotBlank() },
             )
         } catch (e: Exception) {
             Log.d(TAG, "heartbeat failed: ${e.message}")
-            HeartbeatResult(code = -1, bound = false, redirectUrl = null)
+            HeartbeatResult(code = -1, bound = false, redirectUrl = null, pairCode = null)
         } finally {
             try { conn?.disconnect() } catch (e: Exception) { /* no-op */ }
         }
