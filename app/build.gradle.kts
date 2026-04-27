@@ -11,8 +11,8 @@ android {
         applicationId = "com.affissia.player"
         minSdk = 24
         targetSdk = 34
-        versionCode = 6
-        versionName = "2.0.4"
+        versionCode = 7
+        versionName = "2.0.5"
 
         // Hard-baked default server URL. When non-empty AND the device has
         // never been configured, SetupActivity skips itself entirely so the

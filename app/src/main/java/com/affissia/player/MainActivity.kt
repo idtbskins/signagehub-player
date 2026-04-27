@@ -346,7 +346,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildDisplayUrl(serverUrl: String): String {
-        return "${configStore.normalizeServerUrl(serverUrl)}/display/new"
+        val base = "${configStore.normalizeServerUrl(serverUrl)}/display/new"
+        // Render the operator-facing 4-digit pair_code on the kiosk so
+        // the operator can match the row in /screens/pair against the
+        // screen in front of them. Empty string ⇒ first boot before
+        // announce returned, or this device just got unbound; the page
+        // gracefully omits the big code badge in that case.
+        val code = configStore.pairCode
+        return if (code.isNotBlank()) "$base?pair_code=$code" else base
     }
 
     private fun onLoadError(message: String) {

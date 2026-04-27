@@ -35,12 +35,15 @@ class SetupActivity : AppCompatActivity() {
             configStore.serverUrl = BuildConfig.DEFAULT_SERVER_URL
             configStore.failedLoadCount = 0
             Thread {
-                AnnouncementClient.announce(
+                val result = AnnouncementClient.announce(
                     serverUrl = BuildConfig.DEFAULT_SERVER_URL,
                     deviceId = deviceIdentity.deviceId,
                     deviceLabel = deviceIdentity.deviceLabel,
                     appVersion = BuildConfig.VERSION_NAME,
                 )
+                if (result.ok && !result.pairCode.isNullOrBlank()) {
+                    configStore.pairCode = result.pairCode
+                }
             }.start()
             openMainActivity()
             return
@@ -109,12 +112,15 @@ class SetupActivity : AppCompatActivity() {
         // have shipped the endpoint yet) — pairing still works via the
         // existing 6-digit code flow served by the WebView.
         Thread {
-            AnnouncementClient.announce(
+            val result = AnnouncementClient.announce(
                 serverUrl = rawValue,
                 deviceId = deviceIdentity.deviceId,
                 deviceLabel = deviceIdentity.deviceLabel,
                 appVersion = BuildConfig.VERSION_NAME,
             )
+            if (result.ok && !result.pairCode.isNullOrBlank()) {
+                configStore.pairCode = result.pairCode
+            }
         }.start()
 
         Toast.makeText(this, R.string.setup_saved, Toast.LENGTH_SHORT).show()
