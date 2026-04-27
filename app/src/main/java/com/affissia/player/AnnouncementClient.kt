@@ -32,17 +32,26 @@ object AnnouncementClient {
     private const val CONNECT_TIMEOUT_MS = 5_000
     private const val READ_TIMEOUT_MS = 5_000
 
-    /** Returns true on 2xx; false on 4xx/5xx/timeout. Never throws. */
+    /**
+     * POSTs to /api/v1/devices/announce. Returns the parsed result so
+     * MainActivity / SetupActivity can persist the visual ``pair_code``
+     * the backend mints for this device. Never throws.
+     */
+    data class AnnounceResult(
+        val ok: Boolean,
+        val pairCode: String?,
+    )
+
     fun announce(
         serverUrl: String,
         deviceId: String,
         deviceLabel: String,
         appVersion: String,
-    ): Boolean {
+    ): AnnounceResult {
         val cleanedBase = serverUrl.trimEnd('/')
         val target = try { URL("$cleanedBase$ENDPOINT") } catch (e: Exception) {
             Log.w(TAG, "bad URL: $cleanedBase", e)
-            return false
+            return AnnounceResult(ok = false, pairCode = null)
         }
 
         val payload = JSONObject().apply {
@@ -74,10 +83,20 @@ object AnnouncementClient {
             conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
             val code = conn.responseCode
             Log.d(TAG, "announce -> HTTP $code")
-            code in 200..299
+            if (code !in 200..299) {
+                return AnnounceResult(ok = false, pairCode = null)
+            }
+            val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val parsedCode = try {
+                JSONObject(body).optString("pair_code", "").takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                Log.d(TAG, "announce: response not JSON: ${e.message}")
+                null
+            }
+            AnnounceResult(ok = true, pairCode = parsedCode)
         } catch (e: Exception) {
             Log.w(TAG, "announce failed: ${e.message}")
-            false
+            AnnounceResult(ok = false, pairCode = null)
         } finally {
             try { conn?.disconnect() } catch (e: Exception) { /* no-op */ }
         }

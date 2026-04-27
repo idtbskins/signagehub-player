@@ -31,6 +31,20 @@ class ConfigStore(context: Context) {
             preferences.edit().putBoolean(KEY_TRUST_SELF_SIGNED, value).apply()
         }
 
+    /**
+     * The server-minted 4-digit visual pair code for this device. Set
+     * the first time announce returns one and re-read on each subsequent
+     * boot so the kiosk can append ``?pair_code=...`` to its loadUrl
+     * even after a power cycle. Cleared (set to "") when the screen is
+     * known to be bound — the next "unbound" announce will mint a fresh
+     * code.
+     */
+    var pairCode: String
+        get() = preferences.getString(KEY_PAIR_CODE, "").orEmpty()
+        set(value) {
+            preferences.edit().putString(KEY_PAIR_CODE, value).apply()
+        }
+
     fun normalizeServerUrl(value: String): String {
         return value.trim().trimEnd('/')
     }
@@ -41,5 +55,6 @@ class ConfigStore(context: Context) {
         private const val KEY_LAST_LOADED_AT = "last_loaded_at"
         private const val KEY_FAILED_LOAD_COUNT = "failed_load_count"
         private const val KEY_TRUST_SELF_SIGNED = "trust_self_signed"
+        private const val KEY_PAIR_CODE = "pair_code"
     }
 }

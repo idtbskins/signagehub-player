@@ -30,10 +30,24 @@ import java.net.URL
 class HeartbeatScheduler(
     private val deviceIdentity: DeviceIdentity,
     private val configStore: ConfigStore,
-    private val intervalMs: Long = 60_000L,
+    /**
+     * Cadence while the screen is *bound* (operator confirmed, kiosk
+     * is showing real content). 60 s is the right rate for "is this
+     * screen alive" reporting on the admin dashboard.
+     */
+    private val boundIntervalMs: Long = 60_000L,
+    /**
+     * Cadence while *waiting for an admin to bind us*. Way shorter so
+     * the auto-pair flow lands the screen in <10s instead of the 0–60s
+     * window the bound interval would impose. We expect very few
+     * unbound devices on a network at any one time, so the QPS hit is
+     * bounded.
+     */
+    private val unboundIntervalMs: Long = 10_000L,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var running = false
+    @Volatile private var bound = false
     private var lastPlayedAssetIdProvider: () -> String? = { null }
     /**
      * Called on the main thread when a heartbeat reveals the device is now
@@ -68,7 +82,12 @@ class HeartbeatScheduler(
         override fun run() {
             if (!running) return
             postBeat()
-            mainHandler.postDelayed(this, intervalMs)
+            // Pick the next delay based on the latest known bind state.
+            // Keeps the un-bound window tight (sub-10s land time) and
+            // backs off to the bound cadence as soon as the operator
+            // claims us.
+            val next = if (bound) boundIntervalMs else unboundIntervalMs
+            mainHandler.postDelayed(this, next)
         }
     }
 
@@ -96,12 +115,15 @@ class HeartbeatScheduler(
             // succeed.
             if (result.code == 404) {
                 Log.d(TAG, "heartbeat 404 — re-announcing device")
-                AnnouncementClient.announce(
+                val announced = AnnouncementClient.announce(
                     serverUrl = serverUrl,
                     deviceId = deviceId,
                     deviceLabel = deviceIdentity.deviceLabel,
                     appVersion = BuildConfig.VERSION_NAME,
                 )
+                if (announced.ok && !announced.pairCode.isNullOrBlank()) {
+                    configStore.pairCode = announced.pairCode
+                }
                 return@Thread
             }
             // Auto-pair handshake: when an admin binds this device through
@@ -112,8 +134,20 @@ class HeartbeatScheduler(
             // the URL straight to MainActivity, which calls webView.loadUrl
             // and the in-page display.js takes the token from there.
             val redirectUrl = result.redirectUrl
-            if (result.bound && !redirectUrl.isNullOrBlank()) {
-                mainHandler.post { onBoundUrlProvider(redirectUrl) }
+            if (result.bound) {
+                bound = true
+                // The visual pair_code is now obsolete — the screen has
+                // been claimed. Wipe it so that, if the operator ever
+                // unbinds the device and the next announce mints a new
+                // code, we don't accidentally render the stale one.
+                if (configStore.pairCode.isNotBlank()) {
+                    configStore.pairCode = ""
+                }
+                if (!redirectUrl.isNullOrBlank()) {
+                    mainHandler.post { onBoundUrlProvider(redirectUrl) }
+                }
+            } else {
+                bound = false
             }
         }.apply {
             isDaemon = true
