@@ -78,7 +78,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         webView = findViewById(R.id.web_view)
         findViewById<TextView>(R.id.device_id_overlay).text =
-            "device " + deviceIdentity.deviceId + "\n" + getString(R.string.player_pending_bind_label)
+            "device " + deviceIdentity.deviceId + "\n" +
+                "v" + BuildConfig.VERSION_NAME + " · " + getString(R.string.player_pending_bind_label)
 
         configureWindow()
         configureWakeLock()
