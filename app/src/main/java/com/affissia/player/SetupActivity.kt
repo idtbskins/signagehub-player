@@ -34,12 +34,14 @@ class SetupActivity : AppCompatActivity() {
         if (!forceEdit && BuildConfig.DEFAULT_SERVER_URL.isNotBlank()) {
             configStore.serverUrl = BuildConfig.DEFAULT_SERVER_URL
             configStore.failedLoadCount = 0
+            val displaySize = DisplayInfo.resolution(this)
             Thread {
                 val result = AnnouncementClient.announce(
                     serverUrl = BuildConfig.DEFAULT_SERVER_URL,
                     deviceId = deviceIdentity.deviceId,
                     deviceLabel = deviceIdentity.deviceLabel,
                     appVersion = BuildConfig.VERSION_NAME,
+                    displaySize = displaySize,
                 )
                 if (result.ok && !result.pairCode.isNullOrBlank()) {
                     configStore.pairCode = result.pairCode
@@ -111,12 +113,14 @@ class SetupActivity : AppCompatActivity() {
         // Best-effort device announcement. Tolerates 404 (backend may not
         // have shipped the endpoint yet) — pairing still works via the
         // existing 6-digit code flow served by the WebView.
+        val displaySize = DisplayInfo.resolution(this)
         Thread {
             val result = AnnouncementClient.announce(
                 serverUrl = rawValue,
                 deviceId = deviceIdentity.deviceId,
                 deviceLabel = deviceIdentity.deviceLabel,
                 appVersion = BuildConfig.VERSION_NAME,
+                displaySize = displaySize,
             )
             if (result.ok && !result.pairCode.isNullOrBlank()) {
                 configStore.pairCode = result.pairCode

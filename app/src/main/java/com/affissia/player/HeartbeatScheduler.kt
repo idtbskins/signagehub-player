@@ -49,6 +49,7 @@ class HeartbeatScheduler(
     private var running = false
     @Volatile private var bound = false
     private var lastPlayedAssetIdProvider: () -> String? = { null }
+    private var displaySizeProvider: () -> Pair<Int, Int>? = { null }
     /**
      * Called on the main thread when a heartbeat reveals the device is now
      * bound to a screen. The string is the absolute display URL (already
@@ -61,6 +62,10 @@ class HeartbeatScheduler(
 
     fun setLastPlayedAssetIdProvider(provider: () -> String?) {
         lastPlayedAssetIdProvider = provider
+    }
+
+    fun setDisplaySizeProvider(provider: () -> Pair<Int, Int>?) {
+        displaySizeProvider = provider
     }
 
     fun setOnBoundUrl(callback: (String) -> Unit) {
@@ -100,11 +105,18 @@ class HeartbeatScheduler(
         val serverUrl = configStore.serverUrl.trimEnd('/')
         if (serverUrl.isBlank()) return
         val deviceId = deviceIdentity.deviceId
+        val displaySize = displaySizeProvider()
         val payload = JSONObject().apply {
             put("device_id", deviceId)
             put("version", BuildConfig.VERSION_NAME)
             put("current_url", "$serverUrl/display/$deviceId")
             put("last_played_asset_id", lastPlayedAssetIdProvider() ?: JSONObject.NULL)
+            displaySize?.let { (width, height) ->
+                if (width > 0 && height > 0) {
+                    put("display_width", width)
+                    put("display_height", height)
+                }
+            }
         }.toString()
 
         Thread {
@@ -124,6 +136,7 @@ class HeartbeatScheduler(
                     deviceId = deviceId,
                     deviceLabel = deviceIdentity.deviceLabel,
                     appVersion = BuildConfig.VERSION_NAME,
+                    displaySize = displaySize,
                 )
                 val announcedPairCode = announced.pairCode
                 if (announced.ok && !announcedPairCode.isNullOrBlank()) {

@@ -47,6 +47,7 @@ object AnnouncementClient {
         deviceId: String,
         deviceLabel: String,
         appVersion: String,
+        displaySize: Pair<Int, Int>? = null,
     ): AnnounceResult {
         val cleanedBase = serverUrl.trimEnd('/')
         val target = try { URL("$cleanedBase$ENDPOINT") } catch (e: Exception) {
@@ -58,6 +59,12 @@ object AnnouncementClient {
             put("device_id", deviceId)
             put("device_label", deviceLabel)
             put("app_version", appVersion)
+            displaySize?.let { (width, height) ->
+                if (width > 0 && height > 0) {
+                    put("display_width", width)
+                    put("display_height", height)
+                }
+            }
             put("client", "affissia-player-android")
         }.toString()
 

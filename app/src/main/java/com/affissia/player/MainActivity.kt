@@ -21,7 +21,6 @@ import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -71,6 +70,7 @@ class MainActivity : AppCompatActivity() {
 
         deviceIdentity = DeviceIdentity(this)
         heartbeat = HeartbeatScheduler(deviceIdentity, configStore)
+        heartbeat.setDisplaySizeProvider { DisplayInfo.resolution(this) }
         ota = OtaChecker(this)
         heartbeat.setOnBoundUrl { redirectUrl ->
             // Triggered when the heartbeat sees the admin bind us through
@@ -93,10 +93,6 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
         webView = findViewById(R.id.web_view)
-        findViewById<TextView>(R.id.device_id_overlay).text =
-            "device " + deviceIdentity.deviceId + "\n" +
-                "v" + BuildConfig.VERSION_NAME + " · " + getString(R.string.player_pending_bind_label)
-
         configureWindow()
         configureWakeLock()
         configureWebView()
@@ -368,12 +364,14 @@ class MainActivity : AppCompatActivity() {
         if (serverUrl.isBlank()) {
             return
         }
+        val displaySize = DisplayInfo.resolution(this)
         Thread {
             val result = AnnouncementClient.announce(
                 serverUrl = serverUrl,
                 deviceId = deviceIdentity.deviceId,
                 deviceLabel = deviceIdentity.deviceLabel,
                 appVersion = BuildConfig.VERSION_NAME,
+                displaySize = displaySize,
             )
             val pairCode = result.pairCode
             if (result.ok && !pairCode.isNullOrBlank()) {

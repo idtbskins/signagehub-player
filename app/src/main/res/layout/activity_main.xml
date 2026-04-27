@@ -11,22 +11,4 @@
         android:layout_height="match_parent"
         android:background="@color/player_background" />
 
-    <!-- Diagnostic overlay: small device-id badge in the bottom-right corner.
-         Always visible so the operator can identify which physical screen is
-         which when several OPPO units sit side by side. Low-opacity so it
-         never dominates. -->
-    <TextView
-        android:id="@+id/device_id_overlay"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_margin="8dp"
-        android:padding="4dp"
-        android:background="#99000000"
-        android:textColor="#FFFFFFFF"
-        android:textSize="12sp"
-        android:alpha="0.6"
-        android:fontFamily="monospace"
-        android:includeFontPadding="false" />
-
 </FrameLayout>
