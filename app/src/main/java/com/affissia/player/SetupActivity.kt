@@ -27,6 +27,25 @@ class SetupActivity : AppCompatActivity() {
             return
         }
 
+        // First boot + APK ships with a baked-in default URL → save it and
+        // jump straight to the WebView. The operator sees no setup screen
+        // at all; they just install the APK and the player starts playing.
+        // (Force-edit mode bypasses this so a tech can still change URL.)
+        if (!forceEdit && BuildConfig.DEFAULT_SERVER_URL.isNotBlank()) {
+            configStore.serverUrl = BuildConfig.DEFAULT_SERVER_URL
+            configStore.failedLoadCount = 0
+            Thread {
+                AnnouncementClient.announce(
+                    serverUrl = BuildConfig.DEFAULT_SERVER_URL,
+                    deviceId = deviceIdentity.deviceId,
+                    deviceLabel = deviceIdentity.deviceLabel,
+                    appVersion = BuildConfig.VERSION_NAME,
+                )
+            }.start()
+            openMainActivity()
+            return
+        }
+
         setContentView(R.layout.activity_setup)
 
         serverUrlEditText = findViewById(R.id.server_url_input)

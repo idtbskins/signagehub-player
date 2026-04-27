@@ -11,8 +11,15 @@ android {
         applicationId = "com.affissia.player"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 3
+        versionName = "2.0.1"
+
+        // Hard-baked default server URL. When non-empty AND the device has
+        // never been configured, SetupActivity skips itself entirely so the
+        // operator just installs the APK and the screen comes up.
+        // Set to "" to ship a "blank slate" build that always shows setup +
+        // mDNS discovery (useful for purely-LAN deployments).
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://app.affissia.it\"")
     }
 
     signingConfigs {
