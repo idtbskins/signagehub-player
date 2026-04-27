@@ -72,6 +72,19 @@ class MainActivity : AppCompatActivity() {
         deviceIdentity = DeviceIdentity(this)
         heartbeat = HeartbeatScheduler(deviceIdentity, configStore)
         ota = OtaChecker(this)
+        heartbeat.setOnBoundUrl { redirectUrl ->
+            // Triggered when the heartbeat sees the admin bind us through
+            // /screens/pair. The URL already contains the one-shot
+            // ?token= query string for the auto-pair flow; the display
+            // page's display.js stashes it to localStorage and replaces
+            // the URL on first load. Re-loading is idempotent: if the
+            // WebView is already on this URL (modulo the token we just
+            // stripped), the early-out below avoids a flicker.
+            if (lastRemoteUrl != redirectUrl) {
+                lastRemoteUrl = redirectUrl
+                webView.loadUrl(redirectUrl)
+            }
+        }
 
         lastRemoteUrl = buildDisplayUrl(configStore.serverUrl)
 
