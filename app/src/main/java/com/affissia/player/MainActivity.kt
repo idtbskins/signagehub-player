@@ -429,6 +429,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun announcePairCodeIfMissing() {
         if (configStore.pairCode.isNotBlank()) {
+            // SetupActivity may have already finished its async announce
+            // and stored a fresh pair_code, but onCreate's loadInitialContent
+            // ran before that completed — so the WebView is on a /display/new
+            // URL that has no ?pair_code= and the operator stares at a blank
+            // waiting screen until the next heartbeat tick. Force a refresh
+            // here so the code shows up immediately.
+            // (v2.1.1 hotfix.)
+            reloadPendingPageWithPairCode(configStore.pairCode)
             return
         }
         val serverUrl = configStore.serverUrl
