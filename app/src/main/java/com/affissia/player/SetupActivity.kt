@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity
 class SetupActivity : AppCompatActivity() {
     private lateinit var configStore: ConfigStore
     private lateinit var deviceIdentity: DeviceIdentity
+    private lateinit var secretStore: SecretStore
     private lateinit var serverUrlEditText: EditText
     private lateinit var discoveryStatusView: TextView
     private var serverDiscovery: ServerDiscovery? = null
@@ -21,6 +22,7 @@ class SetupActivity : AppCompatActivity() {
 
         configStore = ConfigStore(this)
         deviceIdentity = DeviceIdentity(this)
+        secretStore = SecretStore(this)
         val forceEdit = intent.getBooleanExtra(EXTRA_FORCE_EDIT, false)
         if (configStore.serverUrl.isNotBlank() && !forceEdit) {
             openMainActivity()
@@ -45,6 +47,11 @@ class SetupActivity : AppCompatActivity() {
                 )
                 if (result.ok && !result.pairCode.isNullOrBlank()) {
                     configStore.pairCode = result.pairCode
+                }
+                result.deviceSecret?.let { secret ->
+                    if (secretStore.isAvailable) {
+                        secretStore.secret = secret
+                    }
                 }
             }.start()
             openMainActivity()
@@ -124,6 +131,11 @@ class SetupActivity : AppCompatActivity() {
             )
             if (result.ok && !result.pairCode.isNullOrBlank()) {
                 configStore.pairCode = result.pairCode
+            }
+            result.deviceSecret?.let { secret ->
+                if (secretStore.isAvailable) {
+                    secretStore.secret = secret
+                }
             }
         }.start()
 

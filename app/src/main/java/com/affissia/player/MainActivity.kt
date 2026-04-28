@@ -33,6 +33,7 @@ import kotlin.system.exitProcess
 class MainActivity : AppCompatActivity() {
     private lateinit var configStore: ConfigStore
     private lateinit var deviceIdentity: DeviceIdentity
+    private lateinit var secretStore: SecretStore
     private lateinit var heartbeat: HeartbeatScheduler
     private lateinit var ota: OtaChecker
     private lateinit var webView: WebView
@@ -69,8 +70,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         deviceIdentity = DeviceIdentity(this)
-        heartbeat = HeartbeatScheduler(deviceIdentity, configStore)
+        secretStore = SecretStore(this)
+        heartbeat = HeartbeatScheduler(deviceIdentity, configStore, secretStore)
         heartbeat.setDisplaySizeProvider { DisplayInfo.resolution(this) }
+        heartbeat.setOnSecretRevoked {
+            // PR #5 / decision row 12: server signalled the secret is
+            // invalid. SecretStore is already cleared by the heartbeat
+            // handler; route the WebView back to /display/new so the
+            // operator can re-pair via the on-screen 4-digit code.
+            val pendingUrl = "${configStore.normalizeServerUrl(configStore.serverUrl)}/display/new"
+            lastRemoteUrl = pendingUrl
+            if (::webView.isInitialized) {
+                webView.loadUrl(pendingUrl)
+            }
+        }
         ota = OtaChecker(this)
         heartbeat.setOnBoundUrl { redirectUrl ->
             // Triggered when the heartbeat sees the admin bind us through
@@ -307,6 +320,7 @@ class MainActivity : AppCompatActivity() {
         val options = arrayOf(
             getString(R.string.dialog_change_url),
             getString(R.string.dialog_reload),
+            getString(R.string.dialog_advanced),
             getString(R.string.dialog_cancel),
         )
         AlertDialog.Builder(this)
@@ -323,6 +337,8 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, R.string.reload_requested, Toast.LENGTH_SHORT).show()
                     }
 
+                    2 -> showAdvancedDialog()
+
                     else -> dialog.dismiss()
                 }
             }
@@ -330,6 +346,61 @@ class MainActivity : AppCompatActivity() {
                 enterImmersiveMode()
             }
             .show()
+    }
+
+    /** Decision 2B (PR #5): factory reset is hidden one level below
+     *  the main settings menu so a passing customer or untrained
+     *  staff can't trip it from the long-press dialog directly.
+     *  Anyone with intent (the shop owner) finds it via Advanced
+     *  → Factory reset → confirm. */
+    private fun showAdvancedDialog() {
+        val options = arrayOf(
+            getString(R.string.dialog_factory_reset),
+            getString(R.string.dialog_cancel),
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.dialog_advanced)
+            .setItems(options) { dialog, which ->
+                when (which) {
+                    0 -> confirmFactoryReset()
+                    else -> dialog.dismiss()
+                }
+            }
+            .setOnDismissListener { enterImmersiveMode() }
+            .show()
+    }
+
+    private fun confirmFactoryReset() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.factory_reset_confirm_title)
+            .setMessage(R.string.factory_reset_confirm_body)
+            .setPositiveButton(R.string.factory_reset_confirm_yes) { _, _ ->
+                performFactoryReset()
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setOnDismissListener { enterImmersiveMode() }
+            .show()
+    }
+
+    private fun performFactoryReset() {
+        // Wipe local state. ``device_id`` is intentionally NOT wiped
+        // — it's derived from ANDROID_ID, so the next announce arrives
+        // with the same id and the server keeps the existing tenant
+        // mapping. We just reset the secret + pair_code so the
+        // operator goes through a fresh adoption.
+        secretStore.clear()
+        configStore.pairCode = ""
+        Toast.makeText(this, R.string.factory_reset_done, Toast.LENGTH_LONG).show()
+        // Re-announce immediately so the server mints a new pair_code
+        // and the on-screen waiting page can render it without making
+        // the operator wait for the next heartbeat tick.
+        announcePairCodeIfMissing()
+        // Drop the WebView back to the unbound waiting page.
+        val pendingUrl = "${configStore.normalizeServerUrl(configStore.serverUrl)}/display/new"
+        lastRemoteUrl = pendingUrl
+        if (::webView.isInitialized) {
+            webView.loadUrl(pendingUrl)
+        }
     }
 
     private fun loadInitialContent() {
@@ -377,6 +448,15 @@ class MainActivity : AppCompatActivity() {
             if (result.ok && !pairCode.isNullOrBlank()) {
                 configStore.pairCode = pairCode
                 runOnUiThread { reloadPendingPageWithPairCode(pairCode) }
+            }
+            // PR #5: capture device_secret on the announce that
+            // follows merchant adoption. Quietly no-op if the response
+            // doesn't carry one — the server only emits it on the
+            // first post-adoption announce.
+            result.deviceSecret?.let { secret ->
+                if (secretStore.isAvailable) {
+                    secretStore.secret = secret
+                }
             }
         }.apply {
             isDaemon = true

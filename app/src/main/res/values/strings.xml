@@ -12,7 +12,13 @@
     <string name="dialog_title">Affissia Player</string>
     <string name="dialog_change_url">Change server URL</string>
     <string name="dialog_reload">Reload</string>
+    <string name="dialog_advanced">Advanced…</string>
+    <string name="dialog_factory_reset">Factory reset</string>
     <string name="dialog_cancel">Cancel</string>
+    <string name="factory_reset_confirm_title">Factory reset?</string>
+    <string name="factory_reset_confirm_body">This clears the device secret and pair code. After reset the merchant must enter a new code shown on this screen. Continue?</string>
+    <string name="factory_reset_confirm_yes">Reset</string>
+    <string name="factory_reset_done">Reset complete. Showing new pair code…</string>
     <string name="reload_requested">Reload requested.</string>
     <string name="error_unknown">Unknown error</string>
     <string name="error_retry_toast">Load failed. Retrying in 3 seconds (%1$d/%2$d).</string>

@@ -11,8 +11,8 @@ android {
         applicationId = "com.affissia.player"
         minSdk = 24
         targetSdk = 34
-        versionCode = 9
-        versionName = "2.0.7"
+        versionCode = 10
+        versionName = "2.1.0"
 
         // Hard-baked default server URL. When non-empty AND the device has
         // never been configured, SetupActivity skips itself entirely so the
@@ -69,4 +69,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
+    // PR #5: EncryptedSharedPreferences for the long-lived
+    // device_secret. Backed by the Android Keystore master key.
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }
