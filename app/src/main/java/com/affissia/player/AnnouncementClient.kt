@@ -8,23 +8,22 @@ import javax.net.ssl.HttpsURLConnection
 
 /**
  * Best-effort device announcement to the Affissia backend. POSTs basic
- * device info to `/api/v1/devices/announce` so the operator can see
- * "Bravo TV-43 (192.168.1.45) wants to join" in the admin console and
- * claim it with one click — no 6-digit code typing.
+ * device info plus the tenant invite code to `/api/v1/devices/announce`
+ * so the operator sees only Players intended for their merchant before
+ * binding the physical screen with the short visual pair code.
  *
  * Resilience contract:
- * - 200 / 201: server accepted, announcement persisted. Future: response
- *   may carry a pre-issued device token (skipped for v2.0 — backend not
- *   yet implementing this).
- * - 404: backend doesn't have the endpoint yet (v2.0 ships before the
- *   backend half). Treated as a no-op so the player keeps working with
- *   the existing 6-digit code flow.
+ * - 200 / 201: server accepted, announcement persisted. The response may
+ *   carry a visual pair code and, after adoption, the one-shot
+ *   device_secret.
+ * - 404: backend doesn't have the endpoint yet. Treated as a no-op so
+ *   installers can still troubleshoot the server URL.
  * - any other error / timeout: log and move on. Discovery + manual
  *   pairing fallback continue to work.
  *
  * Runs on a background thread (caller's responsibility) — caller wraps in
  * a Thread or uses lifecycle scope. Uses HttpURLConnection to avoid
- * pulling OkHttp into the v2.0 APK; switch later if we need cleaner code.
+ * pulling OkHttp into the APK; switch later if we need cleaner code.
  */
 object AnnouncementClient {
     private const val TAG = "Announcement"
@@ -54,6 +53,7 @@ object AnnouncementClient {
         deviceId: String,
         deviceLabel: String,
         appVersion: String,
+        inviteCode: String? = null,
         displaySize: Pair<Int, Int>? = null,
     ): AnnounceResult {
         val cleanedBase = serverUrl.trimEnd('/')
@@ -66,6 +66,9 @@ object AnnouncementClient {
             put("device_id", deviceId)
             put("device_label", deviceLabel)
             put("app_version", appVersion)
+            inviteCode?.trim()?.takeIf { it.isNotBlank() }?.let {
+                put("invite_code", it)
+            }
             displaySize?.let { (width, height) ->
                 if (width > 0 && height > 0) {
                     put("display_width", width)
@@ -90,8 +93,8 @@ object AnnouncementClient {
                     // SignageWebClient onReceivedSslError). For the
                     // announce call we use the JVM's default trust
                     // manager — admin LAN setups with self-signed certs
-                    // will fail this announce silently and fall back to
-                    // manual pair, which is fine for v2.0.
+                    // will fail this announce silently and leave the
+                    // setup screen available for manual troubleshooting.
                 }
             }
             conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }

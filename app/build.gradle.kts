@@ -11,14 +11,13 @@ android {
         applicationId = "com.affissia.player"
         minSdk = 24
         targetSdk = 34
-        versionCode = 11
-        versionName = "2.1.1"
+        versionCode = 12
+        versionName = "2.1.2"
 
-        // Hard-baked default server URL. When non-empty AND the device has
-        // never been configured, SetupActivity skips itself entirely so the
-        // operator just installs the APK and the screen comes up.
-        // Set to "" to ship a "blank slate" build that always shows setup +
-        // mDNS discovery (useful for purely-LAN deployments).
+        // Hard-baked default server URL. First-run setup still asks for
+        // the tenant's Player invite code; the URL is only prefilled so
+        // installers do not type it manually. Set to "" for purely-LAN
+        // deployments that should rely on mDNS discovery.
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://app.affissia.it\"")
     }
 

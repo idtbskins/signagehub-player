@@ -2,6 +2,7 @@ package com.affissia.player
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.util.Locale
 
 class ConfigStore(context: Context) {
     private val preferences: SharedPreferences =
@@ -45,8 +46,23 @@ class ConfigStore(context: Context) {
             preferences.edit().putString(KEY_PAIR_CODE, value).apply()
         }
 
+    /**
+     * Tenant-level Player invite code entered during first-run setup.
+     * It routes the device into the right merchant's pending pool before
+     * the short visual pair code is used for final physical confirmation.
+     */
+    var deviceInviteCode: String
+        get() = preferences.getString(KEY_DEVICE_INVITE_CODE, "").orEmpty()
+        set(value) {
+            preferences.edit().putString(KEY_DEVICE_INVITE_CODE, normalizeDeviceInviteCode(value)).apply()
+        }
+
     fun normalizeServerUrl(value: String): String {
         return value.trim().trimEnd('/')
+    }
+
+    fun normalizeDeviceInviteCode(value: String): String {
+        return value.trim().replace("\\s+".toRegex(), "").uppercase(Locale.US)
     }
 
     companion object {
@@ -56,5 +72,6 @@ class ConfigStore(context: Context) {
         private const val KEY_FAILED_LOAD_COUNT = "failed_load_count"
         private const val KEY_TRUST_SELF_SIGNED = "trust_self_signed"
         private const val KEY_PAIR_CODE = "pair_code"
+        private const val KEY_DEVICE_INVITE_CODE = "device_invite_code"
     }
 }
