@@ -12,7 +12,13 @@
     <string name="dialog_title">Affissia 播放器</string>
     <string name="dialog_change_url">修改服务器地址</string>
     <string name="dialog_reload">重新加载</string>
+    <string name="dialog_advanced">高级选项…</string>
+    <string name="dialog_factory_reset">恢复出厂</string>
     <string name="dialog_cancel">取消</string>
+    <string name="factory_reset_confirm_title">恢复出厂?</string>
+    <string name="factory_reset_confirm_body">将清除设备秘钥和配对码。重置后,商户需要重新输入屏幕上显示的新配对码。是否继续?</string>
+    <string name="factory_reset_confirm_yes">重置</string>
+    <string name="factory_reset_done">重置完成,正在显示新配对码…</string>
     <string name="reload_requested">已请求重新加载。</string>
     <string name="error_unknown">未知错误</string>
     <string name="error_retry_toast">加载失败，3 秒后重试（%1$d/%2$d）。</string>

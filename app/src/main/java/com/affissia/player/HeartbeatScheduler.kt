@@ -30,6 +30,7 @@ import java.net.URL
 class HeartbeatScheduler(
     private val deviceIdentity: DeviceIdentity,
     private val configStore: ConfigStore,
+    private val secretStore: SecretStore,
     /**
      * Cadence while the screen is *bound* (operator confirmed, kiosk
      * is showing real content). 60 s is the right rate for "is this
@@ -59,6 +60,11 @@ class HeartbeatScheduler(
      */
     private var onBoundUrlProvider: (String) -> Unit = { }
     private var onPairCodeProvider: (String) -> Unit = { }
+    /** Fired on the main thread when the server returns 403 with a
+     *  ``secret_revoked`` body — the operator clicked "revoke" on the
+     *  Player or rotated keys. Caller (MainActivity) routes back to
+     *  the on-screen pair code to start a fresh adoption. */
+    private var onSecretRevokedProvider: () -> Unit = { }
 
     fun setLastPlayedAssetIdProvider(provider: () -> String?) {
         lastPlayedAssetIdProvider = provider
@@ -74,6 +80,10 @@ class HeartbeatScheduler(
 
     fun setOnPairCode(callback: (String) -> Unit) {
         onPairCodeProvider = callback
+    }
+
+    fun setOnSecretRevoked(callback: () -> Unit) {
+        onSecretRevokedProvider = callback
     }
 
     fun start() {
@@ -124,6 +134,17 @@ class HeartbeatScheduler(
                 "$serverUrl/api/v1/devices/$deviceId/heartbeat",
                 payload,
             )
+            // 403 with secret_revoked: the merchant or super_admin
+            // rotated this device's secret out from under us. Wipe
+            // the local copy and let MainActivity route back to the
+            // pair-code waiting screen.
+            if (result.code == 403 && result.secretRevoked) {
+                Log.w(TAG, "heartbeat: secret revoked, clearing local secret")
+                secretStore.clear()
+                bound = false
+                mainHandler.post { onSecretRevokedProvider() }
+                return@Thread
+            }
             // 404 means the backend has no record of this device — most
             // likely because the original announce in SetupActivity ran
             // before the backend endpoint existed (v2.0.x devices). The
@@ -142,6 +163,15 @@ class HeartbeatScheduler(
                 if (announced.ok && !announcedPairCode.isNullOrBlank()) {
                     configStore.pairCode = announcedPairCode
                     mainHandler.post { onPairCodeProvider(announcedPairCode) }
+                }
+                // The follow-up announce may also be the one where
+                // the server hands us a freshly-minted device_secret
+                // (decision row 9: signed only after the device has
+                // a tenant). Capture it now while we have it.
+                announced.deviceSecret?.let { secret ->
+                    if (secretStore.isAvailable) {
+                        secretStore.secret = secret
+                    }
                 }
                 return@Thread
             }
@@ -185,6 +215,7 @@ class HeartbeatScheduler(
         val bound: Boolean,
         val redirectUrl: String?,
         val pairCode: String?,
+        val secretRevoked: Boolean = false,
     )
 
     /** POSTs the body, returns status code + (when applicable) parsed bound/redirect_url. */
@@ -202,12 +233,36 @@ class HeartbeatScheduler(
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 setRequestProperty("Accept", "application/json")
+                // PR #5: prove ownership of the previously-issued
+                // device_secret. The backend enforces this once it
+                // sees a non-NULL hash on the row; legacy v2.0.x
+                // rows without a secret are still accepted while the
+                // 90-day grace from decision row 22 is in effect.
+                secretStore.secret?.let { secret ->
+                    setRequestProperty(HEADER_DEVICE_SECRET, secret)
+                }
             }
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val code = conn.responseCode
             if (code !in 200..299) {
                 Log.d(TAG, "heartbeat -> HTTP $code")
-                return HeartbeatResult(code = code, bound = false, redirectUrl = null, pairCode = null)
+                // Inspect the error body so we can distinguish
+                // ``secret_revoked`` from ordinary 403 / network
+                // hiccups; the latter we just retry, the former
+                // forces a re-pair.
+                val errorBody = try {
+                    conn.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                } catch (e: Exception) { null }
+                val secretRevoked = code == 403 &&
+                    errorBody != null &&
+                    errorBody.contains("secret_revoked", ignoreCase = true)
+                return HeartbeatResult(
+                    code = code,
+                    bound = false,
+                    redirectUrl = null,
+                    pairCode = null,
+                    secretRevoked = secretRevoked,
+                )
             }
             val responseBody = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             val json = try { JSONObject(responseBody) } catch (e: Exception) {
@@ -230,5 +285,6 @@ class HeartbeatScheduler(
 
     companion object {
         private const val TAG = "Heartbeat"
+        private const val HEADER_DEVICE_SECRET = "X-Device-Secret"
     }
 }

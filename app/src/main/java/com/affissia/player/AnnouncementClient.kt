@@ -40,6 +40,13 @@ object AnnouncementClient {
     data class AnnounceResult(
         val ok: Boolean,
         val pairCode: String?,
+        /** Set exactly once on the announce that follows merchant
+         *  adoption — the server hands back the long-lived
+         *  ``device_secret`` plaintext, callers MUST persist it via
+         *  SecretStore before the response object goes out of scope.
+         *  Subsequent announces of the same device do NOT re-emit
+         *  the secret. */
+        val deviceSecret: String? = null,
     )
 
     fun announce(
@@ -94,13 +101,17 @@ object AnnouncementClient {
                 return AnnounceResult(ok = false, pairCode = null)
             }
             val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            val parsedCode = try {
-                JSONObject(body).optString("pair_code", "").takeIf { it.isNotBlank() }
+            val (parsedCode, parsedSecret) = try {
+                val obj = JSONObject(body)
+                Pair(
+                    obj.optString("pair_code", "").takeIf { it.isNotBlank() },
+                    obj.optString("device_secret", "").takeIf { it.isNotBlank() },
+                )
             } catch (e: Exception) {
                 Log.d(TAG, "announce: response not JSON: ${e.message}")
-                null
+                Pair(null, null)
             }
-            AnnounceResult(ok = true, pairCode = parsedCode)
+            AnnounceResult(ok = true, pairCode = parsedCode, deviceSecret = parsedSecret)
         } catch (e: Exception) {
             Log.w(TAG, "announce failed: ${e.message}")
             AnnounceResult(ok = false, pairCode = null)
