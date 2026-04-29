@@ -14,6 +14,7 @@ class SetupActivity : AppCompatActivity() {
     private lateinit var deviceIdentity: DeviceIdentity
     private lateinit var secretStore: SecretStore
     private lateinit var serverUrlEditText: EditText
+    private lateinit var inviteCodeEditText: EditText
     private lateinit var discoveryStatusView: TextView
     private var serverDiscovery: ServerDiscovery? = null
 
@@ -24,36 +25,11 @@ class SetupActivity : AppCompatActivity() {
         deviceIdentity = DeviceIdentity(this)
         secretStore = SecretStore(this)
         val forceEdit = intent.getBooleanExtra(EXTRA_FORCE_EDIT, false)
-        if (configStore.serverUrl.isNotBlank() && !forceEdit) {
-            openMainActivity()
-            return
-        }
-
-        // First boot + APK ships with a baked-in default URL → save it and
-        // jump straight to the WebView. The operator sees no setup screen
-        // at all; they just install the APK and the player starts playing.
-        // (Force-edit mode bypasses this so a tech can still change URL.)
-        if (!forceEdit && BuildConfig.DEFAULT_SERVER_URL.isNotBlank()) {
-            configStore.serverUrl = BuildConfig.DEFAULT_SERVER_URL
-            configStore.failedLoadCount = 0
-            val displaySize = DisplayInfo.resolution(this)
-            Thread {
-                val result = AnnouncementClient.announce(
-                    serverUrl = BuildConfig.DEFAULT_SERVER_URL,
-                    deviceId = deviceIdentity.deviceId,
-                    deviceLabel = deviceIdentity.deviceLabel,
-                    appVersion = BuildConfig.VERSION_NAME,
-                    displaySize = displaySize,
-                )
-                if (result.ok && !result.pairCode.isNullOrBlank()) {
-                    configStore.pairCode = result.pairCode
-                }
-                result.deviceSecret?.let { secret ->
-                    if (secretStore.isAvailable) {
-                        secretStore.secret = secret
-                    }
-                }
-            }.start()
+        if (
+            configStore.serverUrl.isNotBlank() &&
+            configStore.deviceInviteCode.isNotBlank() &&
+            !forceEdit
+        ) {
             openMainActivity()
             return
         }
@@ -61,8 +37,11 @@ class SetupActivity : AppCompatActivity() {
         setContentView(R.layout.activity_setup)
 
         serverUrlEditText = findViewById(R.id.server_url_input)
+        inviteCodeEditText = findViewById(R.id.invite_code_input)
         discoveryStatusView = findViewById(R.id.discovery_status)
-        serverUrlEditText.setText(configStore.serverUrl)
+        val initialServerUrl = configStore.serverUrl.ifBlank { BuildConfig.DEFAULT_SERVER_URL }
+        serverUrlEditText.setText(initialServerUrl)
+        inviteCodeEditText.setText(configStore.deviceInviteCode)
 
         findViewById<Button>(R.id.save_button).setOnClickListener {
             saveServerUrl()
@@ -113,13 +92,19 @@ class SetupActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.setup_invalid_url, Toast.LENGTH_SHORT).show()
             return
         }
+        val inviteCode = inviteCodeEditText.text?.toString().orEmpty()
+        if (!isValidInviteCode(inviteCode)) {
+            Toast.makeText(this, R.string.setup_invalid_invite_code, Toast.LENGTH_SHORT).show()
+            return
+        }
 
         configStore.serverUrl = rawValue
+        configStore.deviceInviteCode = inviteCode
         configStore.failedLoadCount = 0
 
-        // Best-effort device announcement. Tolerates 404 (backend may not
-        // have shipped the endpoint yet) — pairing still works via the
-        // existing 6-digit code flow served by the WebView.
+        // Best-effort device announcement. The invite code routes this
+        // player into the merchant's pending pool before the on-screen
+        // pair code confirms the physical screen.
         val displaySize = DisplayInfo.resolution(this)
         Thread {
             val result = AnnouncementClient.announce(
@@ -127,6 +112,7 @@ class SetupActivity : AppCompatActivity() {
                 deviceId = deviceIdentity.deviceId,
                 deviceLabel = deviceIdentity.deviceLabel,
                 appVersion = BuildConfig.VERSION_NAME,
+                inviteCode = configStore.deviceInviteCode,
                 displaySize = displaySize,
             )
             if (result.ok && !result.pairCode.isNullOrBlank()) {
@@ -154,6 +140,11 @@ class SetupActivity : AppCompatActivity() {
 
     private fun isValidServerUrl(value: String): Boolean {
         return value.startsWith("http://") || value.startsWith("https://")
+    }
+
+    private fun isValidInviteCode(value: String): Boolean {
+        val cleaned = value.trim().replace("[\\s-]+".toRegex(), "")
+        return cleaned.length in setOf(6, 12) && cleaned.all { it.isLetterOrDigit() }
     }
 
     companion object {

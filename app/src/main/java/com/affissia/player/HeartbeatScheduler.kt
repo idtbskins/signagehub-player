@@ -157,6 +157,7 @@ class HeartbeatScheduler(
                     deviceId = deviceId,
                     deviceLabel = deviceIdentity.deviceLabel,
                     appVersion = BuildConfig.VERSION_NAME,
+                    inviteCode = configStore.deviceInviteCode,
                     displaySize = displaySize,
                 )
                 val announcedPairCode = announced.pairCode

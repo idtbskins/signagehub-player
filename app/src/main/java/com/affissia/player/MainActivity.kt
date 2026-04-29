@@ -63,14 +63,17 @@ class MainActivity : AppCompatActivity() {
 
         installCrashHandlerIfNeeded()
         configStore = ConfigStore(this)
-        if (configStore.serverUrl.isBlank()) {
+        secretStore = SecretStore(this)
+        if (
+            configStore.serverUrl.isBlank() ||
+            (configStore.deviceInviteCode.isBlank() && secretStore.secret.isNullOrBlank())
+        ) {
             startActivity(SetupActivity.createIntent(this))
             finish()
             return
         }
 
         deviceIdentity = DeviceIdentity(this)
-        secretStore = SecretStore(this)
         heartbeat = HeartbeatScheduler(deviceIdentity, configStore, secretStore)
         heartbeat.setDisplaySizeProvider { DisplayInfo.resolution(this) }
         heartbeat.setOnSecretRevoked {
@@ -450,6 +453,7 @@ class MainActivity : AppCompatActivity() {
                 deviceId = deviceIdentity.deviceId,
                 deviceLabel = deviceIdentity.deviceLabel,
                 appVersion = BuildConfig.VERSION_NAME,
+                inviteCode = configStore.deviceInviteCode,
                 displaySize = displaySize,
             )
             val pairCode = result.pairCode

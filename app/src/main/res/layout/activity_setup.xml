@@ -70,6 +70,38 @@
             android:textColor="@color/player_foreground"
             android:textColorHint="@color/player_muted" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:layout_marginBottom="8dp"
+            android:text="@string/setup_invite_label"
+            android:textColor="@color/player_foreground"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/invite_code_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints="oneTimeCode"
+            android:background="@android:drawable/edit_text"
+            android:hint="@string/setup_invite_hint"
+            android:imeOptions="actionDone"
+            android:inputType="textCapCharacters|textNoSuggestions"
+            android:maxLines="1"
+            android:padding="12dp"
+            android:textColor="@color/player_foreground"
+            android:textColorHint="@color/player_muted" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/setup_invite_help"
+            android:textColor="@color/player_muted"
+            android:textSize="12sp" />
+
         <!-- Discovery status: shows "searching..." while NSD scans LAN, then
              "found <url>" when an Affissia server is detected (auto-fills the
              EditText above), or "not found" after a short timeout. -->
