@@ -3,8 +3,10 @@ package com.affissia.player
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -13,6 +15,7 @@ class SetupActivity : AppCompatActivity() {
     private lateinit var configStore: ConfigStore
     private lateinit var deviceIdentity: DeviceIdentity
     private lateinit var secretStore: SecretStore
+    private lateinit var serverUrlSection: LinearLayout
     private lateinit var serverUrlEditText: EditText
     private lateinit var inviteCodeEditText: EditText
     private lateinit var discoveryStatusView: TextView
@@ -36,10 +39,13 @@ class SetupActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_setup)
 
+        serverUrlSection = findViewById(R.id.server_url_section)
         serverUrlEditText = findViewById(R.id.server_url_input)
         inviteCodeEditText = findViewById(R.id.invite_code_input)
         discoveryStatusView = findViewById(R.id.discovery_status)
         val initialServerUrl = configStore.serverUrl.ifBlank { BuildConfig.DEFAULT_SERVER_URL }
+        val showServerUrlField = forceEdit || initialServerUrl.isBlank()
+        serverUrlSection.visibility = if (showServerUrlField) View.VISIBLE else View.GONE
         serverUrlEditText.setText(initialServerUrl)
         inviteCodeEditText.setText(configStore.deviceInviteCode)
 
@@ -47,12 +53,11 @@ class SetupActivity : AppCompatActivity() {
             saveServerUrl()
         }
 
-        // Phase 2 — zero-config discovery: scan the LAN for an Affissia
-        // server (mDNS) and auto-fill the URL field. Operator can still
-        // type a URL manually if discovery fails or finds the wrong one.
-        // Skip the scan if the field is already populated (operator
-        // pressed long-press > "Change server URL" knowing what they want).
-        if (serverUrlEditText.text.isNullOrBlank()) {
+        // Production installers should only enter the invite code. Server URL
+        // remains hidden and defaults to BuildConfig.DEFAULT_SERVER_URL. The
+        // URL field is visible only from the long-press maintenance path, or
+        // when a special build has no default URL and must rely on mDNS.
+        if (showServerUrlField && serverUrlEditText.text.isNullOrBlank()) {
             startDiscovery()
         } else {
             discoveryStatusView.visibility = TextView.GONE
@@ -87,7 +92,11 @@ class SetupActivity : AppCompatActivity() {
     }
 
     private fun saveServerUrl() {
-        val rawValue = serverUrlEditText.text?.toString().orEmpty().trim()
+        val rawValue = if (serverUrlSection.visibility == View.VISIBLE) {
+            serverUrlEditText.text?.toString().orEmpty().trim()
+        } else {
+            configStore.serverUrl.ifBlank { BuildConfig.DEFAULT_SERVER_URL }.trim()
+        }
         if (!isValidServerUrl(rawValue)) {
             Toast.makeText(this, R.string.setup_invalid_url, Toast.LENGTH_SHORT).show()
             return
