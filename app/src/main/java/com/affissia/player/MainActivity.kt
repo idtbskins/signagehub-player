@@ -34,6 +34,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var configStore: ConfigStore
     private lateinit var deviceIdentity: DeviceIdentity
     private lateinit var secretStore: SecretStore
+    private lateinit var healthStore: PlayerHealthStore
+    private lateinit var remotePlayerConfigStore: RemotePlayerConfigStore
     private lateinit var heartbeat: HeartbeatScheduler
     private lateinit var ota: OtaChecker
     private lateinit var webView: WebView
@@ -52,7 +54,8 @@ class MainActivity : AppCompatActivity() {
             if (!::ota.isInitialized || !::configStore.isInitialized) return
             val url = configStore.serverUrl
             if (url.isNotBlank()) {
-                ota.checkForUpdate(url, BuildConfig.VERSION_NAME)
+                val deviceId = if (::deviceIdentity.isInitialized) deviceIdentity.deviceId else null
+                ota.checkForUpdate(url, BuildConfig.VERSION_NAME, deviceId)
             }
             longPressHandler.postDelayed(this, otaCheckIntervalMs)
         }
@@ -61,7 +64,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        installCrashHandlerIfNeeded()
+        healthStore = PlayerHealthStore(applicationContext)
+        healthStore.recordLaunch()
+        installCrashHandlerIfNeeded(applicationContext)
         configStore = ConfigStore(this)
         secretStore = SecretStore(this)
         if (
@@ -74,8 +79,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         deviceIdentity = DeviceIdentity(this)
+        remotePlayerConfigStore = RemotePlayerConfigStore(applicationContext)
         heartbeat = HeartbeatScheduler(deviceIdentity, configStore, secretStore)
         heartbeat.setDisplaySizeProvider { DisplayInfo.resolution(this) }
+        heartbeat.setDeviceCapabilitiesProvider { DeviceCapabilities.collect(applicationContext) }
+        heartbeat.setHealthProvider { healthStore.healthJson() }
+        heartbeat.setRemoteConfigConsumer { playerConfigJson, featuresJson ->
+            remotePlayerConfigStore.saveFromHeartbeat(playerConfigJson, featuresJson)
+        }
         heartbeat.setOnSecretRevoked {
             // PR #5 / decision row 12: server signalled the secret is
             // invalid. SecretStore is already cleared by the heartbeat
@@ -496,15 +507,21 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
-    private fun installCrashHandlerIfNeeded() {
+    private fun installCrashHandlerIfNeeded(context: android.content.Context) {
         if (crashHandlerInstalled) {
             return
         }
 
+        val appContext = context.applicationContext
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e(TAG, "Uncaught exception. Scheduling restart.", throwable)
-            scheduleRestart()
+            try {
+                PlayerHealthStore(appContext).recordCrash(thread.name, throwable)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to persist crash summary.", e)
+            }
+            scheduleRestart(appContext)
             previousHandler?.uncaughtException(thread, throwable) ?: run {
                 Process.killProcess(Process.myPid())
                 exitProcess(10)
@@ -513,17 +530,17 @@ class MainActivity : AppCompatActivity() {
         crashHandlerInstalled = true
     }
 
-    private fun scheduleRestart() {
-        val restartIntent = Intent(this, MainActivity::class.java).apply {
+    private fun scheduleRestart(context: android.content.Context = this) {
+        val restartIntent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         val pendingIntent = PendingIntent.getActivity(
-            this,
+            context,
             1001,
             restartIntent,
             PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val alarmManager = getSystemService(AlarmManager::class.java)
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
         alarmManager?.setExact(
             AlarmManager.ELAPSED_REALTIME,
             SystemClock.elapsedRealtime() + CRASH_RESTART_DELAY_MS,

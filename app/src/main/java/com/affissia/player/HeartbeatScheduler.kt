@@ -51,6 +51,9 @@ class HeartbeatScheduler(
     @Volatile private var bound = false
     private var lastPlayedAssetIdProvider: () -> String? = { null }
     private var displaySizeProvider: () -> Pair<Int, Int>? = { null }
+    private var deviceCapabilitiesProvider: () -> JSONObject = { JSONObject() }
+    private var healthProvider: () -> JSONObject = { JSONObject() }
+    private var remoteConfigConsumer: (String?, String?) -> Unit = { _, _ -> }
     /**
      * Called on the main thread when a heartbeat reveals the device is now
      * bound to a screen. The string is the absolute display URL (already
@@ -72,6 +75,18 @@ class HeartbeatScheduler(
 
     fun setDisplaySizeProvider(provider: () -> Pair<Int, Int>?) {
         displaySizeProvider = provider
+    }
+
+    fun setDeviceCapabilitiesProvider(provider: () -> JSONObject) {
+        deviceCapabilitiesProvider = provider
+    }
+
+    fun setHealthProvider(provider: () -> JSONObject) {
+        healthProvider = provider
+    }
+
+    fun setRemoteConfigConsumer(consumer: (String?, String?) -> Unit) {
+        remoteConfigConsumer = consumer
     }
 
     fun setOnBoundUrl(callback: (String) -> Unit) {
@@ -116,11 +131,16 @@ class HeartbeatScheduler(
         if (serverUrl.isBlank()) return
         val deviceId = deviceIdentity.deviceId
         val displaySize = displaySizeProvider()
+        val deviceCapabilities = safeJson(deviceCapabilitiesProvider)
+        val health = safeJson(healthProvider)
         val payload = JSONObject().apply {
             put("device_id", deviceId)
             put("version", BuildConfig.VERSION_NAME)
             put("current_url", "$serverUrl/display/$deviceId")
             put("last_played_asset_id", lastPlayedAssetIdProvider() ?: JSONObject.NULL)
+            put("capabilities", deviceCapabilities)
+            put("health", health)
+            putHealthTopLevelFields(health)
             displaySize?.let { (width, height) ->
                 if (width > 0 && height > 0) {
                     put("display_width", width)
@@ -144,6 +164,9 @@ class HeartbeatScheduler(
                 bound = false
                 mainHandler.post { onSecretRevokedProvider() }
                 return@Thread
+            }
+            if (result.playerConfigJson != null || result.featuresJson != null) {
+                remoteConfigConsumer(result.playerConfigJson, result.featuresJson)
             }
             // 404 means the backend has no record of this device — most
             // likely because the original announce in SetupActivity ran
@@ -217,6 +240,8 @@ class HeartbeatScheduler(
         val redirectUrl: String?,
         val pairCode: String?,
         val secretRevoked: Boolean = false,
+        val playerConfigJson: String? = null,
+        val featuresJson: String? = null,
     )
 
     /** POSTs the body, returns status code + (when applicable) parsed bound/redirect_url. */
@@ -275,6 +300,8 @@ class HeartbeatScheduler(
                 bound = json.optBoolean("bound", false),
                 redirectUrl = json.optString("redirect_url", "").takeIf { it.isNotBlank() },
                 pairCode = json.optString("pair_code", "").takeIf { it.isNotBlank() },
+                playerConfigJson = json.optJsonString("player_config"),
+                featuresJson = json.optJsonString("features"),
             )
         } catch (e: Exception) {
             Log.d(TAG, "heartbeat failed: ${e.message}")
@@ -282,6 +309,29 @@ class HeartbeatScheduler(
         } finally {
             try { conn?.disconnect() } catch (e: Exception) { /* no-op */ }
         }
+    }
+
+    private fun safeJson(provider: () -> JSONObject): JSONObject {
+        return try {
+            provider()
+        } catch (e: Exception) {
+            JSONObject()
+        }
+    }
+
+    private fun JSONObject.putHealthTopLevelFields(health: JSONObject) {
+        if (health.length() == 0) return
+        put("session_id", health.optString("session_id", ""))
+        put("launch_count", health.optInt("launch_count", 0))
+        put("crash_count", health.optInt("crash_count", 0))
+        put("last_crash_summary", health.opt("last_crash_summary") ?: JSONObject.NULL)
+        put("last_crash_json", health.opt("last_crash_json") ?: JSONObject.NULL)
+    }
+
+    private fun JSONObject.optJsonString(name: String): String? {
+        val value = opt(name) ?: return null
+        if (value == JSONObject.NULL) return null
+        return value.toString()
     }
 
     companion object {

@@ -10,6 +10,7 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 /**
  * Over-the-air updater for the Affissia Player.
@@ -33,9 +34,9 @@ import java.net.URL
  */
 class OtaChecker(private val context: Context) {
 
-    fun checkForUpdate(serverUrl: String, currentVersion: String) {
+    fun checkForUpdate(serverUrl: String, currentVersion: String, deviceId: String? = null) {
         Thread {
-            runCheck(serverUrl, currentVersion)
+            runCheck(serverUrl, currentVersion, deviceId)
         }.apply {
             isDaemon = true
             name = "ota-check"
@@ -43,10 +44,10 @@ class OtaChecker(private val context: Context) {
         }
     }
 
-    private fun runCheck(serverUrl: String, currentVersion: String) {
+    private fun runCheck(serverUrl: String, currentVersion: String, deviceId: String?) {
         val baseUrl = serverUrl.trimEnd('/')
         val target = try {
-            URL("$baseUrl/api/v1/player/latest?current=$currentVersion")
+            URL("$baseUrl/api/v1/player/latest?${latestQuery(currentVersion, deviceId)}")
         } catch (e: Exception) {
             Log.w(TAG, "bad URL: $baseUrl", e)
             return
@@ -157,6 +158,20 @@ class OtaChecker(private val context: Context) {
             if (ai != bi) return ai > bi
         }
         return false
+    }
+
+    private fun latestQuery(currentVersion: String, deviceId: String?): String {
+        val params = mutableListOf("current" to currentVersion)
+        if (!deviceId.isNullOrBlank()) {
+            params += "device_id" to deviceId
+        }
+        return params.joinToString("&") { (name, value) ->
+            "${encode(name)}=${encode(value)}"
+        }
+    }
+
+    private fun encode(value: String): String {
+        return URLEncoder.encode(value, "UTF-8")
     }
 
     companion object {
