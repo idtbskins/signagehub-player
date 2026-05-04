@@ -57,18 +57,6 @@ class ConfigStore(context: Context) {
             preferences.edit().putString(KEY_DEVICE_INVITE_CODE, normalizeDeviceInviteCode(value)).apply()
         }
 
-    var displayScreenId: String
-        get() = preferences.getString(KEY_DISPLAY_SCREEN_ID, "").orEmpty()
-        set(value) {
-            preferences.edit().putString(KEY_DISPLAY_SCREEN_ID, value.trim()).apply()
-        }
-
-    var displayToken: String
-        get() = preferences.getString(KEY_DISPLAY_TOKEN, "").orEmpty()
-        set(value) {
-            preferences.edit().putString(KEY_DISPLAY_TOKEN, value.trim()).apply()
-        }
-
     fun normalizeServerUrl(value: String): String {
         return value.trim().trimEnd('/')
     }
@@ -85,7 +73,5 @@ class ConfigStore(context: Context) {
         private const val KEY_TRUST_SELF_SIGNED = "trust_self_signed"
         private const val KEY_PAIR_CODE = "pair_code"
         private const val KEY_DEVICE_INVITE_CODE = "device_invite_code"
-        private const val KEY_DISPLAY_SCREEN_ID = "display_screen_id"
-        private const val KEY_DISPLAY_TOKEN = "display_token"
     }
 }

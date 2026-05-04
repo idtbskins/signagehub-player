@@ -4,7 +4,6 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.Color
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
@@ -22,15 +21,12 @@ import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.view.TextureView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import org.json.JSONObject
-import org.json.JSONTokener
 import kotlin.math.abs
 import kotlin.system.exitProcess
 
@@ -39,7 +35,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceIdentity: DeviceIdentity
     private lateinit var secretStore: SecretStore
     private lateinit var heartbeat: HeartbeatScheduler
-    private var nativeVideoWallPlayer: NativeVideoWallPlayer? = null
     private lateinit var ota: OtaChecker
     private lateinit var webView: WebView
     private var wakeLock: PowerManager.WakeLock? = null
@@ -103,7 +98,6 @@ class MainActivity : AppCompatActivity() {
             // stripped), the early-out below avoids a flicker.
             if (lastRemoteUrl != redirectUrl) {
                 lastRemoteUrl = redirectUrl
-                persistDisplaySessionFromUrl(redirectUrl)
                 webView.loadUrl(redirectUrl)
             }
         }
@@ -115,17 +109,6 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
         webView = findViewById(R.id.web_view)
-        nativeVideoWallPlayer = try {
-            NativeVideoWallPlayer(
-                context = this,
-                textureView = findViewById<TextureView>(R.id.native_video_wall),
-                webView = webView,
-                configStore = configStore,
-            )
-        } catch (t: Throwable) {
-            Log.e(TAG, "native video wall unavailable; falling back to WebView", t)
-            null
-        }
         configureWindow()
         configureWakeLock()
         configureWebView()
@@ -149,7 +132,6 @@ class MainActivity : AppCompatActivity() {
             longPressHandler.removeCallbacks(otaCheckRunnable)
             longPressHandler.post(otaCheckRunnable)
         }
-        nativeVideoWallPlayer?.start()
     }
 
     override fun onPause() {
@@ -157,15 +139,12 @@ class MainActivity : AppCompatActivity() {
             webView.onPause()
         }
         if (::heartbeat.isInitialized) heartbeat.stop()
-        nativeVideoWallPlayer?.stop()
         longPressHandler.removeCallbacks(otaCheckRunnable)
         super.onPause()
     }
 
     override fun onDestroy() {
         cancelLongPress()
-        nativeVideoWallPlayer?.release()
-        nativeVideoWallPlayer = null
         if (::webView.isInitialized) {
             webView.stopLoading()
             webView.webChromeClient = null
@@ -293,8 +272,6 @@ class MainActivity : AppCompatActivity() {
             onLoadError = ::onLoadError,
             onPageLoaded = { loadedUrl ->
                 lastRemoteUrl = loadedUrl
-                persistDisplaySessionFromUrl(loadedUrl)
-                persistDisplaySessionFromWebView()
             },
         )
     }
@@ -416,8 +393,6 @@ class MainActivity : AppCompatActivity() {
         // operator goes through a fresh adoption.
         secretStore.clear()
         configStore.pairCode = ""
-        configStore.displayScreenId = ""
-        configStore.displayToken = ""
         Toast.makeText(this, R.string.factory_reset_done, Toast.LENGTH_LONG).show()
         // Re-announce immediately so the server mints a new pair_code
         // and the on-screen waiting page can render it without making
@@ -514,51 +489,6 @@ class MainActivity : AppCompatActivity() {
         if (targetUrl != currentUrl) {
             lastRemoteUrl = targetUrl
             webView.loadUrl(targetUrl)
-        }
-    }
-
-    private fun persistDisplaySessionFromUrl(url: String) {
-        val uri = try { Uri.parse(url) } catch (e: Exception) { return }
-        val segments = uri.pathSegments ?: return
-        val displayIndex = segments.indexOf("display")
-        if (displayIndex >= 0 && segments.size > displayIndex + 1) {
-            val screenId = segments[displayIndex + 1]
-            if (screenId.isNotBlank() && screenId != "new") {
-                configStore.displayScreenId = screenId
-            }
-        }
-        uri.getQueryParameter("token")?.takeIf { it.isNotBlank() }?.let { token ->
-            configStore.displayToken = token
-        }
-    }
-
-    private fun persistDisplaySessionFromWebView() {
-        if (!::webView.isInitialized) return
-        val script = """
-            (function() {
-              try {
-                return JSON.stringify({
-                  screenId: window.localStorage.getItem('signagehub.screenId') || '',
-                  token: window.localStorage.getItem('signagehub.displayToken') || ''
-                });
-              } catch (e) {
-                return '{}';
-              }
-            })();
-        """.trimIndent()
-        webView.evaluateJavascript(script) { raw ->
-            try {
-                val payload = JSONTokener(raw ?: "{}").nextValue()
-                val jsonText = if (payload is String) payload else payload.toString()
-                val json = JSONObject(jsonText)
-                val screenId = json.optString("screenId", "")
-                val token = json.optString("token", "")
-                if (screenId.isNotBlank()) configStore.displayScreenId = screenId
-                if (token.isNotBlank()) configStore.displayToken = token
-            } catch (_: Exception) {
-                // Best effort only. The WebView path keeps working even if
-                // native playback cannot read localStorage on a locked-down ROM.
-            }
         }
     }
 
