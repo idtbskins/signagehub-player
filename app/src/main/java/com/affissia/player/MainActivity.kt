@@ -69,10 +69,7 @@ class MainActivity : AppCompatActivity() {
         installCrashHandlerIfNeeded(applicationContext)
         configStore = ConfigStore(this)
         secretStore = SecretStore(this)
-        if (
-            configStore.serverUrl.isBlank() ||
-            (configStore.deviceInviteCode.isBlank() && secretStore.secret.isNullOrBlank())
-        ) {
+        if (configStore.serverUrl.isBlank()) {
             startActivity(SetupActivity.createIntent(this))
             finish()
             return

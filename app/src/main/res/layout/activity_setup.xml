@@ -77,14 +77,15 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:autofillHints="url"
-                android:background="@android:drawable/edit_text"
+                android:background="@drawable/setup_input_background"
                 android:hint="@string/setup_server_hint"
                 android:imeOptions="actionDone"
                 android:inputType="textUri"
                 android:maxLines="1"
                 android:padding="12dp"
-                android:textColor="@color/player_foreground"
-                android:textColorHint="@color/player_muted" />
+                android:textColor="@color/setup_input_text"
+                android:textColorHighlight="@color/affissia_orange"
+                android:textColorHint="@color/setup_input_hint" />
 
             <!-- Discovery status: shown only when a maintenance build has no
                  default server URL and setup must discover a local server. -->
@@ -112,14 +113,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:autofillHints="oneTimeCode"
-            android:background="@android:drawable/edit_text"
+            android:background="@drawable/setup_input_background"
             android:hint="@string/setup_invite_hint"
             android:imeOptions="actionDone"
             android:inputType="textCapCharacters|textNoSuggestions"
             android:maxLines="1"
             android:padding="12dp"
-            android:textColor="@color/player_foreground"
-            android:textColorHint="@color/player_muted" />
+            android:textColor="@color/setup_input_text"
+            android:textColorHighlight="@color/affissia_orange"
+            android:textColorHint="@color/setup_input_hint" />
 
         <TextView
             android:layout_width="match_parent"

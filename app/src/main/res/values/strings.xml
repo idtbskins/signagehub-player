@@ -1,16 +1,16 @@
 <resources>
     <string name="app_name">Affissia Player</string>
     <string name="setup_title">First time setup</string>
-    <string name="setup_hint">Enter the Player invite code from the merchant account. The server is preset to Affissia Cloud.</string>
+    <string name="setup_hint">Enter the Player invite code from the merchant account, or leave it blank to show this device as unknown on the same LAN.</string>
     <string name="setup_server_label">Server URL</string>
     <string name="setup_server_hint">Enter your Affissia server URL</string>
     <string name="setup_example">Default: https://app.affissia.it</string>
-    <string name="setup_invite_label">Player invite code</string>
+    <string name="setup_invite_label">Player invite code (optional)</string>
     <string name="setup_invite_hint">e.g. ABCD-EFGH-JK23</string>
-    <string name="setup_invite_help">Generate this code from the merchant account page before installing the Player.</string>
+    <string name="setup_invite_help">With a code, this Player appears under that merchant. Without one, it appears as an unknown nearby device.</string>
     <string name="setup_save">Save</string>
     <string name="setup_invalid_url">Server URL must start with http:// or https://</string>
-    <string name="setup_invalid_invite_code">Enter a valid Player invite code.</string>
+    <string name="setup_invalid_invite_code">Enter a valid Player invite code, or leave it blank.</string>
     <string name="setup_saved">Setup saved.</string>
     <string name="setup_searching">Searching for Affissia server on this network…</string>
     <string name="setup_found">Found %1$s — tap Save to confirm.</string>

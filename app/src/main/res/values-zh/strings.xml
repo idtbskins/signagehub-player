@@ -1,16 +1,16 @@
 <resources>
     <string name="app_name">Affissia 播放器</string>
     <string name="setup_title">首次设置</string>
-    <string name="setup_hint">请输入商户账户页生成的播放器接入码。服务器已默认使用 Affissia 云端。</string>
+    <string name="setup_hint">可以输入商户账户页生成的播放器接入码；不输入也可以保存，设备会作为同局域网未知设备出现。</string>
     <string name="setup_server_label">服务器地址</string>
     <string name="setup_server_hint">请输入 Affissia 服务器地址</string>
     <string name="setup_example">默认：https://app.affissia.it</string>
-    <string name="setup_invite_label">播放器接入码</string>
+    <string name="setup_invite_label">播放器接入码（可选）</string>
     <string name="setup_invite_hint">例如 ABCD-EFGH-JK23</string>
-    <string name="setup_invite_help">安装播放器前，请先在商户账户页生成这个接入码。</string>
+    <string name="setup_invite_help">输入接入码会直接进入对应商户待绑定列表；留空会作为附近未知设备等待绑定。</string>
     <string name="setup_save">保存</string>
     <string name="setup_invalid_url">服务器地址必须以 http:// 或 https:// 开头</string>
-    <string name="setup_invalid_invite_code">请输入有效的播放器接入码。</string>
+    <string name="setup_invalid_invite_code">请输入有效的播放器接入码，或留空。</string>
     <string name="setup_saved">设置已保存。</string>
     <string name="setup_searching">正在局域网中搜索 Affissia 服务器…</string>
     <string name="setup_found">已发现 %1$s — 点击保存即可。</string>
