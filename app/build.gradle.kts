@@ -11,8 +11,8 @@ android {
         applicationId = "com.affissia.player"
         minSdk = 24
         targetSdk = 34
-        versionCode = 13
-        versionName = "2.1.3"
+        versionCode = 14
+        versionName = "2.1.4"
 
         // Hard-baked default server URL. First-run setup still asks for
         // the tenant's Player invite code; the URL is only prefilled so
@@ -68,6 +68,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.media3:media3-exoplayer:1.3.1")
     // PR #5: EncryptedSharedPreferences for the long-lived
     // device_secret. Backed by the Android Keystore master key.
     implementation("androidx.security:security-crypto:1.1.0-alpha06")

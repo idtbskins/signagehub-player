@@ -11,4 +11,11 @@
         android:layout_height="match_parent"
         android:background="@color/player_background" />
 
+    <TextureView
+        android:id="@+id/native_video_wall"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/player_background"
+        android:visibility="gone" />
+
 </FrameLayout>
