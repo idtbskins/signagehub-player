@@ -69,7 +69,9 @@ class MainActivity : AppCompatActivity() {
         installCrashHandlerIfNeeded(applicationContext)
         configStore = ConfigStore(this)
         secretStore = SecretStore(this)
-        if (configStore.serverUrl.isBlank()) {
+        val hasProvisioningCredential =
+            configStore.deviceInviteCode.isNotBlank() || secretStore.secret != null
+        if (configStore.serverUrl.isBlank() || !hasProvisioningCredential) {
             startActivity(SetupActivity.createIntent(this))
             finish()
             return
@@ -452,6 +454,9 @@ class MainActivity : AppCompatActivity() {
         }
         val serverUrl = configStore.serverUrl
         if (serverUrl.isBlank()) {
+            return
+        }
+        if (configStore.deviceInviteCode.isBlank() && secretStore.secret == null) {
             return
         }
         val displaySize = DisplayInfo.resolution(this)

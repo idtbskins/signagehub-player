@@ -28,7 +28,9 @@ class SetupActivity : AppCompatActivity() {
         deviceIdentity = DeviceIdentity(this)
         secretStore = SecretStore(this)
         val forceEdit = intent.getBooleanExtra(EXTRA_FORCE_EDIT, false)
-        if (configStore.serverUrl.isNotBlank() && !forceEdit) {
+        val hasProvisioningCredential =
+            configStore.deviceInviteCode.isNotBlank() || secretStore.secret != null
+        if (configStore.serverUrl.isNotBlank() && hasProvisioningCredential && !forceEdit) {
             openMainActivity()
             return
         }
@@ -97,8 +99,8 @@ class SetupActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.setup_invalid_url, Toast.LENGTH_SHORT).show()
             return
         }
-        val inviteCode = inviteCodeEditText.text?.toString().orEmpty()
-        if (inviteCode.isNotBlank() && !isValidInviteCode(inviteCode)) {
+        val inviteCode = inviteCodeEditText.text?.toString().orEmpty().trim()
+        if (inviteCode.isBlank() || !isValidInviteCode(inviteCode)) {
             Toast.makeText(this, R.string.setup_invalid_invite_code, Toast.LENGTH_SHORT).show()
             return
         }
@@ -107,9 +109,8 @@ class SetupActivity : AppCompatActivity() {
         configStore.deviceInviteCode = inviteCode
         configStore.failedLoadCount = 0
 
-        // Best-effort device announcement. With an invite code the device
-        // enters the merchant's pending pool; without one it lands in the
-        // unknown-device pool and can be adopted from the same LAN.
+        // Best-effort device announcement. A valid invite code is required
+        // before a new Player can enter any merchant-visible pending list.
         val displaySize = DisplayInfo.resolution(this)
         Thread {
             val result = AnnouncementClient.announce(
