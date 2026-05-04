@@ -39,7 +39,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceIdentity: DeviceIdentity
     private lateinit var secretStore: SecretStore
     private lateinit var heartbeat: HeartbeatScheduler
-    private lateinit var nativeVideoWallPlayer: NativeVideoWallPlayer
+    private var nativeVideoWallPlayer: NativeVideoWallPlayer? = null
     private lateinit var ota: OtaChecker
     private lateinit var webView: WebView
     private var wakeLock: PowerManager.WakeLock? = null
@@ -115,12 +115,17 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
         webView = findViewById(R.id.web_view)
-        nativeVideoWallPlayer = NativeVideoWallPlayer(
-            context = this,
-            textureView = findViewById<TextureView>(R.id.native_video_wall),
-            webView = webView,
-            configStore = configStore,
-        )
+        nativeVideoWallPlayer = try {
+            NativeVideoWallPlayer(
+                context = this,
+                textureView = findViewById<TextureView>(R.id.native_video_wall),
+                webView = webView,
+                configStore = configStore,
+            )
+        } catch (t: Throwable) {
+            Log.e(TAG, "native video wall unavailable; falling back to WebView", t)
+            null
+        }
         configureWindow()
         configureWakeLock()
         configureWebView()
@@ -144,9 +149,7 @@ class MainActivity : AppCompatActivity() {
             longPressHandler.removeCallbacks(otaCheckRunnable)
             longPressHandler.post(otaCheckRunnable)
         }
-        if (::nativeVideoWallPlayer.isInitialized) {
-            nativeVideoWallPlayer.start()
-        }
+        nativeVideoWallPlayer?.start()
     }
 
     override fun onPause() {
@@ -154,20 +157,19 @@ class MainActivity : AppCompatActivity() {
             webView.onPause()
         }
         if (::heartbeat.isInitialized) heartbeat.stop()
-        if (::nativeVideoWallPlayer.isInitialized) nativeVideoWallPlayer.stop()
+        nativeVideoWallPlayer?.stop()
         longPressHandler.removeCallbacks(otaCheckRunnable)
         super.onPause()
     }
 
     override fun onDestroy() {
         cancelLongPress()
+        nativeVideoWallPlayer?.release()
+        nativeVideoWallPlayer = null
         if (::webView.isInitialized) {
             webView.stopLoading()
             webView.webChromeClient = null
             webView.destroy()
-        }
-        if (::nativeVideoWallPlayer.isInitialized) {
-            nativeVideoWallPlayer.release()
         }
         releaseWakeLock()
         super.onDestroy()

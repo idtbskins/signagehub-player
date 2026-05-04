@@ -3,6 +3,9 @@ package com.affissia.player
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 object DisplayAssignmentClient {
     data class Crop(
@@ -42,7 +45,7 @@ object DisplayAssignmentClient {
             if (conn.responseCode !in 200..299) return null
             val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             parseVideoWallAssignment(base, body)
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             null
         } finally {
             try { conn?.disconnect() } catch (_: Exception) { }
@@ -126,12 +129,37 @@ object DisplayAssignmentClient {
     }
 
     private fun parseIsoMillis(raw: String): Long? {
-        if (raw.isBlank()) return null
-        return try {
-            java.time.Instant.parse(raw).toEpochMilli()
-        } catch (_: Exception) {
-            null
+        val normalized = normalizeUtcTimestamp(raw) ?: return null
+        val patterns = if (normalized.contains('.')) {
+            listOf("yyyy-MM-dd HH:mm:ss.SSS", "yyyy-MM-dd HH:mm:ss")
+        } else {
+            listOf("yyyy-MM-dd HH:mm:ss")
         }
+        for (pattern in patterns) {
+            try {
+                return SimpleDateFormat(pattern, Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                    isLenient = false
+                }.parse(normalized)?.time
+            } catch (_: Exception) {
+                continue
+            }
+        }
+        return null
+    }
+
+    private fun normalizeUtcTimestamp(raw: String): String? {
+        var value = raw.trim()
+        if (value.isBlank()) return null
+        value = value.replace('T', ' ')
+        value = value.removeSuffix("Z")
+        value = value.replace(Regex("""[+-]00:?00$"""), "")
+        val fraction = Regex("""\.(\d{1,9})$""").find(value)
+        if (fraction != null) {
+            val millis = fraction.groupValues[1].padEnd(3, '0').take(3)
+            value = value.substring(0, fraction.range.first) + ".$millis"
+        }
+        return value
     }
 
     private fun floorMod(value: Long, divisor: Long): Long {

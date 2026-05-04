@@ -86,11 +86,15 @@ class NativeVideoWallPlayer(
             return
         }
         Thread {
-            val assignment = DisplayAssignmentClient.fetchVideoWallAssignment(
-                serverUrl = serverUrl,
-                screenId = screenId,
-                token = token,
-            )
+            val assignment = try {
+                DisplayAssignmentClient.fetchVideoWallAssignment(
+                    serverUrl = serverUrl,
+                    screenId = screenId,
+                    token = token,
+                )
+            } catch (_: Throwable) {
+                null
+            }
             mainHandler.post {
                 if (!running) return@post
                 if (assignment == null) {
