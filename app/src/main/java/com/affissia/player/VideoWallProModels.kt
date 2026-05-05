@@ -12,9 +12,20 @@ data class VideoWallProAssignment(
     val sha256: String,
     val startAtMillis: Long? = null,
     val serverNowMillis: Long? = null,
+    val crop: VideoWallCrop = VideoWallCrop(),
 ) {
     val assetSignature: String
         get() = "$sha256:${assetUrl.trim()}"
+}
+
+data class VideoWallCrop(
+    val x: Float = 0f,
+    val y: Float = 0f,
+    val w: Float = 1f,
+    val h: Float = 1f,
+) {
+    val isValid: Boolean
+        get() = x >= 0f && y >= 0f && w > 0f && h > 0f && x + w <= 1.0001f && y + h <= 1.0001f
 }
 
 enum class VideoWallReadyState(val wireValue: String) {
@@ -80,6 +91,7 @@ object VideoWallProManifestParser {
             sha256 = sha256,
             startAtMillis = source.optEpochMillis("start_at"),
             serverNowMillis = source.optEpochMillis("server_now"),
+            crop = source.optVideoWallCrop(),
         )
     }
 
@@ -97,6 +109,18 @@ object VideoWallProManifestParser {
             is String -> value.trim().takeIf { it.isNotBlank() }?.let { parseTimestampMillis(it) }
             else -> throw IllegalArgumentException("$name must be an epoch number or ISO-8601 string")
         }
+    }
+
+    private fun JSONObject.optVideoWallCrop(): VideoWallCrop {
+        val crop = optJSONObject("framing")?.optJSONObject("crop")
+            ?: optJSONObject("crop")
+            ?: return VideoWallCrop()
+        return VideoWallCrop(
+            x = crop.optDouble("x", 0.0).toFloat(),
+            y = crop.optDouble("y", 0.0).toFloat(),
+            w = crop.optDouble("w", 1.0).toFloat(),
+            h = crop.optDouble("h", 1.0).toFloat(),
+        ).takeIf { it.isValid } ?: VideoWallCrop()
     }
 
     private fun parseTimestampMillis(raw: String): Long {

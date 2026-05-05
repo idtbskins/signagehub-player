@@ -27,6 +27,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.ui.PlayerView
 import kotlin.math.abs
 import kotlin.system.exitProcess
 
@@ -39,6 +40,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var heartbeat: HeartbeatScheduler
     private lateinit var ota: OtaChecker
     private lateinit var webView: WebView
+    private lateinit var nativeVideoWallView: PlayerView
+    private lateinit var nativeVideoWallController: NativeVideoWallController
     private var wakeLock: PowerManager.WakeLock? = null
     private var longPressRunnable: Runnable? = null
     private val longPressHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -85,6 +88,11 @@ class MainActivity : AppCompatActivity() {
         heartbeat.setHealthProvider { healthStore.healthJson() }
         heartbeat.setRemoteConfigConsumer { playerConfigJson, featuresJson ->
             remotePlayerConfigStore.saveFromHeartbeat(playerConfigJson, featuresJson)
+            runOnUiThread {
+                if (::nativeVideoWallController.isInitialized) {
+                    nativeVideoWallController.applyPlayerConfig(playerConfigJson)
+                }
+            }
         }
         heartbeat.setOnSecretRevoked {
             // PR #5 / decision row 12: server signalled the secret is
@@ -119,6 +127,12 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
         webView = findViewById(R.id.web_view)
+        nativeVideoWallView = findViewById(R.id.native_video_wall_view)
+        nativeVideoWallController = NativeVideoWallController(
+            context = this,
+            playerView = nativeVideoWallView,
+            onNativeActiveChanged = ::setNativeVideoWallVisible,
+        )
         configureWindow()
         configureWakeLock()
         configureWebView()
@@ -155,6 +169,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelLongPress()
+        if (::nativeVideoWallController.isInitialized) {
+            nativeVideoWallController.release()
+        }
         if (::webView.isInitialized) {
             webView.stopLoading()
             webView.webChromeClient = null
@@ -422,6 +439,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun reloadCurrentContent() {
+        if (::nativeVideoWallController.isInitialized) {
+            nativeVideoWallController.stop()
+        }
         configStore.failedLoadCount = 0
         val targetUrl = if (lastRemoteUrl.startsWith("http")) lastRemoteUrl else buildDisplayUrl(
             configStore.serverUrl,
@@ -507,6 +527,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun onLoadError(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun setNativeVideoWallVisible(active: Boolean) {
+        if (!::webView.isInitialized || !::nativeVideoWallView.isInitialized) {
+            return
+        }
+        if (active) {
+            nativeVideoWallView.visibility = View.VISIBLE
+            nativeVideoWallView.bringToFront()
+            webView.evaluateJavascript(
+                "document.querySelectorAll('video').forEach(function(v){v.pause();});",
+                null,
+            )
+            webView.visibility = View.GONE
+        } else {
+            nativeVideoWallView.visibility = View.GONE
+            webView.visibility = View.VISIBLE
+            webView.bringToFront()
+        }
     }
 
     private fun installCrashHandlerIfNeeded(context: android.content.Context) {
