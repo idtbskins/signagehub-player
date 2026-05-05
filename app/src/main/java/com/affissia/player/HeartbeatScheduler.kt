@@ -150,9 +150,11 @@ class HeartbeatScheduler(
         }.toString()
 
         Thread {
+            val requestStartedAtMs = System.currentTimeMillis()
             val result = postHeartbeat(
                 "$serverUrl/api/v1/devices/$deviceId/heartbeat",
                 payload,
+                requestStartedAtMs,
             )
             // 403 with secret_revoked: the merchant or super_admin
             // rotated this device's secret out from under us. Wipe
@@ -166,6 +168,10 @@ class HeartbeatScheduler(
                 return@Thread
             }
             if (result.playerConfigJson != null || result.featuresJson != null) {
+                Log.d(
+                    TAG,
+                    "heartbeat ok device=$deviceId bound=${result.bound} native=${result.nativeVideoWallEnabled} screen=${result.screenId ?: "-"} rtt=${result.roundTripMs ?: -1}ms",
+                )
                 remoteConfigConsumer(result.playerConfigJson, result.featuresJson)
             }
             // 404 means the backend has no record of this device — most
@@ -242,10 +248,13 @@ class HeartbeatScheduler(
         val secretRevoked: Boolean = false,
         val playerConfigJson: String? = null,
         val featuresJson: String? = null,
+        val nativeVideoWallEnabled: Boolean = false,
+        val screenId: String? = null,
+        val roundTripMs: Long? = null,
     )
 
     /** POSTs the body, returns status code + (when applicable) parsed bound/redirect_url. */
-    private fun postHeartbeat(urlString: String, body: String): HeartbeatResult {
+    private fun postHeartbeat(urlString: String, body: String, requestStartedAtMs: Long): HeartbeatResult {
         val target = try { URL(urlString) } catch (e: Exception) {
             Log.w(TAG, "bad URL: $urlString", e)
             return HeartbeatResult(code = -1, bound = false, redirectUrl = null, pairCode = null)
@@ -291,17 +300,31 @@ class HeartbeatScheduler(
                 )
             }
             val responseBody = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val responseReceivedAtMs = System.currentTimeMillis()
             val json = try { JSONObject(responseBody) } catch (e: Exception) {
                 Log.d(TAG, "heartbeat: response not JSON: ${e.message}")
                 return HeartbeatResult(code = code, bound = false, redirectUrl = null, pairCode = null)
+            }
+            val playerConfig = json.optJSONObject("player_config")
+            val nativeConfig = playerConfig?.optJSONObject("native_video_wall")
+            val assignment = nativeConfig?.optJSONObject("assignment")
+            if (nativeConfig != null) {
+                nativeConfig.put(
+                    "client_clock_midpoint_ms",
+                    requestStartedAtMs + ((responseReceivedAtMs - requestStartedAtMs) / 2L),
+                )
+                nativeConfig.put("heartbeat_rtt_ms", responseReceivedAtMs - requestStartedAtMs)
             }
             HeartbeatResult(
                 code = code,
                 bound = json.optBoolean("bound", false),
                 redirectUrl = json.optString("redirect_url", "").takeIf { it.isNotBlank() },
                 pairCode = json.optString("pair_code", "").takeIf { it.isNotBlank() },
-                playerConfigJson = json.optJsonString("player_config"),
+                playerConfigJson = playerConfig?.toString() ?: json.optJsonString("player_config"),
                 featuresJson = json.optJsonString("features"),
+                nativeVideoWallEnabled = nativeConfig?.optBoolean("enabled", false) ?: false,
+                screenId = assignment?.optString("screen_id", "")?.takeIf { it.isNotBlank() },
+                roundTripMs = responseReceivedAtMs - requestStartedAtMs,
             )
         } catch (e: Exception) {
             Log.d(TAG, "heartbeat failed: ${e.message}")

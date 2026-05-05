@@ -46,19 +46,24 @@ class NativeVideoWallController(
 
     fun applyPlayerConfig(playerConfigJson: String?): Boolean {
         val assignment = parseNativeAssignment(playerConfigJson) ?: run {
+            Log.d(TAG, "native wall disabled or missing in player_config")
             stop()
             return false
         }
+        refreshServerClockOffset(assignment)
         val signature = assignment.signatureWithCrop
         if (signature == activeSignature && player != null) {
+            activeAssignment = assignment
+            Log.d(TAG, "native wall refreshed screen=${assignment.screenId} offset=${serverClockOffsetMs}ms")
             return true
         }
 
         activeSignature = signature
         activeAssignment = assignment
-        assignment.serverNowMillis?.let { serverNow ->
-            serverClockOffsetMs = serverNow - System.currentTimeMillis()
-        }
+        Log.d(
+            TAG,
+            "native wall assignment screen=${assignment.screenId} crop=${assignment.crop} offset=${serverClockOffsetMs}ms",
+        )
         onNativeActiveChanged(true)
 
         Thread {
@@ -72,6 +77,7 @@ class NativeVideoWallController(
                     stop()
                     return@post
                 }
+                Log.d(TAG, "native wall cache ready path=${status.cachePath}")
                 startCachedVideo(assignment, File(status.cachePath))
             }
         }.apply {
@@ -112,12 +118,14 @@ class NativeVideoWallController(
             playWhenReady = false
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
+                    Log.d(TAG, "native wall playback state=$playbackState duration=${this@apply.duration}")
                     if (playbackState == Player.STATE_READY) {
                         scheduleAlignedStart(this@apply, assignment)
                     }
                 }
 
                 override fun onVideoSizeChanged(videoSize: VideoSize) {
+                    Log.d(TAG, "native wall video size=${videoSize.width}x${videoSize.height}")
                     applyCropTransform(assignment.crop)
                 }
             })
@@ -129,13 +137,17 @@ class NativeVideoWallController(
     }
 
     private fun scheduleAlignedStart(exoPlayer: ExoPlayer, assignment: VideoWallProAssignment) {
-        if (startScheduled || activeAssignment != assignment) {
+        val signature = assignment.signatureWithCrop
+        if (startScheduled || activeSignature != signature) {
             return
         }
         val durationMs = exoPlayer.duration
         if (durationMs <= 0 || durationMs == androidx.media3.common.C.TIME_UNSET) {
-            exoPlayer.play()
-            startSyncLoop()
+            handler.postDelayed({
+                if (!startScheduled && activeSignature == signature && player === exoPlayer) {
+                    scheduleAlignedStart(exoPlayer, assignment)
+                }
+            }, UNKNOWN_DURATION_RETRY_MS)
             return
         }
 
@@ -146,8 +158,9 @@ class NativeVideoWallController(
         exoPlayer.playbackParameters = PlaybackParameters(1f)
 
         val delayMs = (startServerMs - nowServerMs()).coerceAtLeast(0L)
+        Log.d(TAG, "native wall scheduled start delay=${delayMs}ms position=${positionMs}ms duration=${durationMs}ms")
         handler.postDelayed({
-            if (!released && activeAssignment == assignment && player === exoPlayer) {
+            if (!released && activeSignature == signature && player === exoPlayer) {
                 exoPlayer.play()
                 startSyncLoop()
             }
@@ -171,6 +184,7 @@ class NativeVideoWallController(
         val absDrift = abs(driftMs)
         when {
             absDrift > HARD_SEEK_DRIFT_MS -> {
+                Log.d(TAG, "native wall hard sync drift=${driftMs}ms target=$targetMs current=${exoPlayer.currentPosition}")
                 exoPlayer.seekTo(targetMs)
                 exoPlayer.playbackParameters = PlaybackParameters(1f)
             }
@@ -187,16 +201,27 @@ class NativeVideoWallController(
             val textureView = findTextureView(playerView) ?: return@post
             val viewWidth = textureView.width.toFloat().takeIf { it > 0f } ?: return@post
             val viewHeight = textureView.height.toFloat().takeIf { it > 0f } ?: return@post
-            val matrix = Matrix().apply {
-                postScale(1f / crop.w, 1f / crop.h)
-                postTranslate(-(crop.x / crop.w) * viewWidth, -(crop.y / crop.h) * viewHeight)
-            }
-            textureView.setTransform(matrix)
+            textureView.setTransform(Matrix())
+            textureView.pivotX = 0f
+            textureView.pivotY = 0f
+            textureView.scaleX = 1f / crop.w
+            textureView.scaleY = 1f / crop.h
+            textureView.translationX = -(crop.x / crop.w) * viewWidth
+            textureView.translationY = -(crop.y / crop.h) * viewHeight
+            Log.d(TAG, "native wall crop applied view=${viewWidth}x${viewHeight} crop=$crop")
         }
     }
 
     private fun resetCropTransform() {
-        findTextureView(playerView)?.setTransform(Matrix())
+        findTextureView(playerView)?.let { textureView ->
+            textureView.setTransform(Matrix())
+            textureView.pivotX = 0f
+            textureView.pivotY = 0f
+            textureView.scaleX = 1f
+            textureView.scaleY = 1f
+            textureView.translationX = 0f
+            textureView.translationY = 0f
+        }
     }
 
     private fun findTextureView(view: View): TextureView? {
@@ -222,10 +247,33 @@ class NativeVideoWallController(
                 return null
             }
             val assignment = nativeConfig.optJSONObject("assignment") ?: return null
-            VideoWallProManifestParser.parse(assignment.toString())
+            val parsed = VideoWallProManifestParser.parse(assignment.toString()).copy(
+                clientClockMidpointMillis = nativeConfig.optLongOrNull("client_clock_midpoint_ms"),
+            )
+            if (parsed.startAtMillis == null || parsed.serverNowMillis == null) {
+                Log.w(TAG, "native wall config missing start_at or server_now")
+                return null
+            }
+            parsed
         } catch (e: Exception) {
             Log.w(TAG, "invalid native wall config", e)
             null
+        }
+    }
+
+    private fun refreshServerClockOffset(assignment: VideoWallProAssignment) {
+        val serverNow = assignment.serverNowMillis ?: return
+        val clientAnchor = assignment.clientClockMidpointMillis ?: System.currentTimeMillis()
+        serverClockOffsetMs = serverNow - clientAnchor
+    }
+
+    private fun JSONObject.optLongOrNull(name: String): Long? {
+        if (!has(name) || isNull(name)) return null
+        val value = opt(name)
+        return when (value) {
+            is Number -> value.toLong()
+            is String -> value.toLongOrNull()
+            else -> null
         }
     }
 
@@ -262,9 +310,10 @@ class NativeVideoWallController(
         private const val TAG = "NativeVideoWall"
         private const val START_LEAD_MS = 900L
         private const val START_QUANTUM_MS = 250L
-        private const val SYNC_INTERVAL_MS = 1_000L
-        private const val HARD_SEEK_DRIFT_MS = 700L
-        private const val RATE_DRIFT_MS = 25L
-        private const val RATE_NUDGE = 0.02f
+        private const val UNKNOWN_DURATION_RETRY_MS = 100L
+        private const val SYNC_INTERVAL_MS = 500L
+        private const val HARD_SEEK_DRIFT_MS = 2_000L
+        private const val RATE_DRIFT_MS = 24L
+        private const val RATE_NUDGE = 0.015f
     }
 }

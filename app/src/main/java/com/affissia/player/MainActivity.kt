@@ -81,6 +81,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         deviceIdentity = DeviceIdentity(this)
+        Log.d(TAG, "player launch version=${BuildConfig.VERSION_NAME} device=${deviceIdentity.deviceId} label=${deviceIdentity.deviceLabel}")
         remotePlayerConfigStore = RemotePlayerConfigStore(applicationContext)
         heartbeat = HeartbeatScheduler(deviceIdentity, configStore, secretStore)
         heartbeat.setDisplaySizeProvider { DisplayInfo.resolution(this) }
@@ -133,6 +134,12 @@ class MainActivity : AppCompatActivity() {
             playerView = nativeVideoWallView,
             onNativeActiveChanged = ::setNativeVideoWallVisible,
         )
+        val savedConfigAgeMs = System.currentTimeMillis() - remotePlayerConfigStore.updatedAtMs
+        if (savedConfigAgeMs in 0..SAVED_NATIVE_CONFIG_MAX_AGE_MS) {
+            remotePlayerConfigStore.playerConfigJson?.let { savedConfig ->
+                nativeVideoWallController.applyPlayerConfig(savedConfig)
+            }
+        }
         configureWindow()
         configureWakeLock()
         configureWebView()
@@ -196,9 +203,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun configureWindow() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode =
@@ -232,9 +249,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun configureWakeLock() {
         wakeLock = getSystemService(PowerManager::class.java)
-            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:PlayerWakeLock")
+            ?.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                    PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                    PowerManager.ON_AFTER_RELEASE,
+                "$packageName:PlayerWakeLock",
+            )
             ?.apply {
                 setReferenceCounted(false)
             }
@@ -593,6 +616,7 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "MainActivity"
         private const val LONG_PRESS_TIMEOUT_MS = 5_000L
         private const val CRASH_RESTART_DELAY_MS = 1_500L
+        private const val SAVED_NATIVE_CONFIG_MAX_AGE_MS = 15_000L
 
         @Volatile
         private var crashHandlerInstalled = false

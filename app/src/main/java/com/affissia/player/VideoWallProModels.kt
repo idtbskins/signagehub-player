@@ -12,6 +12,7 @@ data class VideoWallProAssignment(
     val sha256: String,
     val startAtMillis: Long? = null,
     val serverNowMillis: Long? = null,
+    val clientClockMidpointMillis: Long? = null,
     val crop: VideoWallCrop = VideoWallCrop(),
 ) {
     val assetSignature: String

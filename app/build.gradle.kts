@@ -11,8 +11,8 @@ android {
         applicationId = "com.affissia.player"
         minSdk = 24
         targetSdk = 34
-        versionCode = 19
-        versionName = "2.1.9"
+        versionCode = 20
+        versionName = "2.1.10"
 
         // Hard-baked default server URL. First-run setup still asks for
         // the tenant's Player invite code; the URL is only prefilled so

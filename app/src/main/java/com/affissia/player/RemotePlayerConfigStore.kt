@@ -23,6 +23,12 @@ class RemotePlayerConfigStore(context: Context) {
         )
     }
 
+    val playerConfigJson: String?
+        get() = preferences.getString(KEY_PLAYER_CONFIG_JSON, null)
+
+    val updatedAtMs: Long
+        get() = preferences.getLong(KEY_UPDATED_AT_MS, 0L)
+
     companion object {
         private const val TAG = "RemotePlayerConfig"
         private const val PREFS_NAME = "affissia_player_remote_config"

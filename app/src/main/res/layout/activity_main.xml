@@ -4,6 +4,8 @@
     android:id="@+id/main_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:clipChildren="true"
+    android:clipToPadding="true"
     android:background="@color/player_background">
 
     <WebView
@@ -17,6 +19,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@android:color/black"
+        android:clipChildren="true"
+        android:clipToPadding="true"
         android:visibility="gone"
         app:resize_mode="fill"
         app:show_buffering="never"
