@@ -32,11 +32,12 @@ class HeartbeatScheduler(
     private val configStore: ConfigStore,
     private val secretStore: SecretStore,
     /**
-     * Cadence while the screen is *bound* (operator confirmed, kiosk
-     * is showing real content). 60 s is the right rate for "is this
-     * screen alive" reporting on the admin dashboard.
+     * Cadence while the screen is *bound*. The Player also uses
+     * heartbeat to receive remote runtime config, so keep this close
+     * to the web display SSE cadence; otherwise stop/unpublish can
+     * remain visible until the next long heartbeat.
      */
-    private val boundIntervalMs: Long = 60_000L,
+    private val boundIntervalMs: Long = 2_000L,
     /**
      * Cadence while *waiting for an admin to bind us*. Way shorter so
      * the auto-pair flow lands the screen in <10s instead of the 0–60s
