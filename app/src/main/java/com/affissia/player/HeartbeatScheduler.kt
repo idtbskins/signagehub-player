@@ -2,10 +2,12 @@ package com.affissia.player
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Periodic heartbeat — POSTs basic device state to the Affissia backend
@@ -48,8 +50,10 @@ class HeartbeatScheduler(
     private val unboundIntervalMs: Long = 10_000L,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val inFlight = AtomicBoolean(false)
     private var running = false
     @Volatile private var bound = false
+    @Volatile private var stagingFastPoll = false
     private var lastPlayedAssetIdProvider: () -> String? = { null }
     private var displaySizeProvider: () -> Pair<Int, Int>? = { null }
     private var deviceCapabilitiesProvider: () -> JSONObject = { JSONObject() }
@@ -122,7 +126,11 @@ class HeartbeatScheduler(
             // Keeps the un-bound window tight (sub-10s land time) and
             // backs off to the bound cadence as soon as the operator
             // claims us.
-            val next = if (bound) boundIntervalMs else unboundIntervalMs
+            val next = when {
+                !bound -> unboundIntervalMs
+                stagingFastPoll -> STAGING_INTERVAL_MS
+                else -> boundIntervalMs
+            }
             mainHandler.postDelayed(this, next)
         }
     }
@@ -150,89 +158,101 @@ class HeartbeatScheduler(
             }
         }.toString()
 
+        if (!inFlight.compareAndSet(false, true)) {
+            return
+        }
+
         Thread {
-            val requestStartedAtMs = System.currentTimeMillis()
-            val result = postHeartbeat(
-                "$serverUrl/api/v1/devices/$deviceId/heartbeat",
-                payload,
-                requestStartedAtMs,
-            )
-            // 403 with secret_revoked: the merchant or super_admin
-            // rotated this device's secret out from under us. Wipe
-            // the local copy and let MainActivity route back to the
-            // pair-code waiting screen.
-            if (result.code == 403 && result.secretRevoked) {
-                Log.w(TAG, "heartbeat: secret revoked, clearing local secret")
-                secretStore.clear()
-                bound = false
-                mainHandler.post { onSecretRevokedProvider() }
-                return@Thread
-            }
-            if (result.playerConfigJson != null || result.featuresJson != null) {
-                Log.d(
-                    TAG,
-                    "heartbeat ok device=$deviceId bound=${result.bound} native=${result.nativeVideoWallEnabled} screen=${result.screenId ?: "-"} rtt=${result.roundTripMs ?: -1}ms",
+            try {
+                val requestStartedAtMs = System.currentTimeMillis()
+                val requestStartedElapsedMs = SystemClock.elapsedRealtime()
+                val result = postHeartbeat(
+                    "$serverUrl/api/v1/devices/$deviceId/heartbeat",
+                    payload,
+                    requestStartedAtMs,
+                    requestStartedElapsedMs,
                 )
-                remoteConfigConsumer(result.playerConfigJson, result.featuresJson)
-            }
-            // 404 means the backend has no record of this device — most
-            // likely because the original announce in SetupActivity ran
-            // before the backend endpoint existed (v2.0.x devices). The
-            // backend now exists, so re-announce on the same thread to
-            // self-heal, and the next heartbeat tick will succeed.
-            if (result.code == 404) {
-                Log.d(TAG, "heartbeat 404 — re-announcing device")
-                val announced = AnnouncementClient.announce(
-                    serverUrl = serverUrl,
-                    deviceId = deviceId,
-                    deviceLabel = deviceIdentity.deviceLabel,
-                    appVersion = BuildConfig.VERSION_NAME,
-                    inviteCode = configStore.deviceInviteCode,
-                    displaySize = displaySize,
-                )
-                val announcedPairCode = announced.pairCode
-                if (announced.ok && !announcedPairCode.isNullOrBlank()) {
-                    configStore.pairCode = announcedPairCode
-                    mainHandler.post { onPairCodeProvider(announcedPairCode) }
+                stagingFastPoll = result.stagingActive
+                // 403 with secret_revoked: the merchant or super_admin
+                // rotated this device's secret out from under us. Wipe
+                // the local copy and let MainActivity route back to the
+                // pair-code waiting screen.
+                if (result.code == 403 && result.secretRevoked) {
+                    Log.w(TAG, "heartbeat: secret revoked, clearing local secret")
+                    secretStore.clear()
+                    bound = false
+                    stagingFastPoll = false
+                    mainHandler.post { onSecretRevokedProvider() }
+                    return@Thread
                 }
-                // The follow-up announce may also be the one where
-                // the server hands us a freshly-minted device_secret
-                // (decision row 9: signed only after the device has
-                // a tenant). Capture it now while we have it.
-                announced.deviceSecret?.let { secret ->
-                    if (secretStore.isAvailable) {
-                        secretStore.secret = secret
+                if (result.playerConfigJson != null || result.featuresJson != null) {
+                    Log.d(
+                        TAG,
+                        "heartbeat ok device=$deviceId bound=${result.bound} native=${result.nativeVideoWallEnabled} staging=${result.stagingActive} screen=${result.screenId ?: "-"} rtt=${result.roundTripMs ?: -1}ms",
+                    )
+                    remoteConfigConsumer(result.playerConfigJson, result.featuresJson)
+                }
+                // 404 means the backend has no record of this device — most
+                // likely because the original announce in SetupActivity ran
+                // before the backend endpoint existed (v2.0.x devices). The
+                // backend now exists, so re-announce on the same thread to
+                // self-heal, and the next heartbeat tick will succeed.
+                if (result.code == 404) {
+                    Log.d(TAG, "heartbeat 404 — re-announcing device")
+                    val announced = AnnouncementClient.announce(
+                        serverUrl = serverUrl,
+                        deviceId = deviceId,
+                        deviceLabel = deviceIdentity.deviceLabel,
+                        appVersion = BuildConfig.VERSION_NAME,
+                        inviteCode = configStore.deviceInviteCode,
+                        displaySize = displaySize,
+                    )
+                    val announcedPairCode = announced.pairCode
+                    if (announced.ok && !announcedPairCode.isNullOrBlank()) {
+                        configStore.pairCode = announcedPairCode
+                        mainHandler.post { onPairCodeProvider(announcedPairCode) }
+                    }
+                    // The follow-up announce may also be the one where
+                    // the server hands us a freshly-minted device_secret
+                    // (decision row 9: signed only after the device has
+                    // a tenant). Capture it now while we have it.
+                    announced.deviceSecret?.let { secret ->
+                        if (secretStore.isAvailable) {
+                            secretStore.secret = secret
+                        }
+                    }
+                    return@Thread
+                }
+                // Auto-pair handshake: when an admin binds this device through
+                // /screens/pair, the next heartbeat returns
+                //   { "bound": true, "redirect_url": ".../display/<sid>?token=..." }
+                // The query string carries the long-term display token *once*
+                // (the server NULLs the column right after sending). We hand
+                // the URL straight to MainActivity, which calls webView.loadUrl
+                // and the in-page display.js takes the token from there.
+                val redirectUrl = result.redirectUrl
+                if (result.bound) {
+                    bound = true
+                    // The visual pair_code is now obsolete — the screen has
+                    // been claimed. Wipe it so that, if the operator ever
+                    // unbinds the device and the next announce mints a new
+                    // code, we don't accidentally render the stale one.
+                    if (configStore.pairCode.isNotBlank()) {
+                        configStore.pairCode = ""
+                    }
+                    if (!redirectUrl.isNullOrBlank()) {
+                        mainHandler.post { onBoundUrlProvider(redirectUrl) }
+                    }
+                } else {
+                    bound = false
+                    val pairCode = result.pairCode
+                    if (!pairCode.isNullOrBlank() && configStore.pairCode != pairCode) {
+                        configStore.pairCode = pairCode
+                        mainHandler.post { onPairCodeProvider(pairCode) }
                     }
                 }
-                return@Thread
-            }
-            // Auto-pair handshake: when an admin binds this device through
-            // /screens/pair, the next heartbeat returns
-            //   { "bound": true, "redirect_url": ".../display/<sid>?token=..." }
-            // The query string carries the long-term display token *once*
-            // (the server NULLs the column right after sending). We hand
-            // the URL straight to MainActivity, which calls webView.loadUrl
-            // and the in-page display.js takes the token from there.
-            val redirectUrl = result.redirectUrl
-            if (result.bound) {
-                bound = true
-                // The visual pair_code is now obsolete — the screen has
-                // been claimed. Wipe it so that, if the operator ever
-                // unbinds the device and the next announce mints a new
-                // code, we don't accidentally render the stale one.
-                if (configStore.pairCode.isNotBlank()) {
-                    configStore.pairCode = ""
-                }
-                if (!redirectUrl.isNullOrBlank()) {
-                    mainHandler.post { onBoundUrlProvider(redirectUrl) }
-                }
-            } else {
-                bound = false
-                val pairCode = result.pairCode
-                if (!pairCode.isNullOrBlank() && configStore.pairCode != pairCode) {
-                    configStore.pairCode = pairCode
-                    mainHandler.post { onPairCodeProvider(pairCode) }
-                }
+            } finally {
+                inFlight.set(false)
             }
         }.apply {
             isDaemon = true
@@ -250,12 +270,18 @@ class HeartbeatScheduler(
         val playerConfigJson: String? = null,
         val featuresJson: String? = null,
         val nativeVideoWallEnabled: Boolean = false,
+        val stagingActive: Boolean = false,
         val screenId: String? = null,
         val roundTripMs: Long? = null,
     )
 
     /** POSTs the body, returns status code + (when applicable) parsed bound/redirect_url. */
-    private fun postHeartbeat(urlString: String, body: String, requestStartedAtMs: Long): HeartbeatResult {
+    private fun postHeartbeat(
+        urlString: String,
+        body: String,
+        requestStartedAtMs: Long,
+        requestStartedElapsedMs: Long,
+    ): HeartbeatResult {
         val target = try { URL(urlString) } catch (e: Exception) {
             Log.w(TAG, "bad URL: $urlString", e)
             return HeartbeatResult(code = -1, bound = false, redirectUrl = null, pairCode = null)
@@ -302,6 +328,8 @@ class HeartbeatScheduler(
             }
             val responseBody = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             val responseReceivedAtMs = System.currentTimeMillis()
+            val responseReceivedElapsedMs = SystemClock.elapsedRealtime()
+            val rttMs = (responseReceivedElapsedMs - requestStartedElapsedMs).coerceAtLeast(0L)
             val json = try { JSONObject(responseBody) } catch (e: Exception) {
                 Log.d(TAG, "heartbeat: response not JSON: ${e.message}")
                 return HeartbeatResult(code = code, bound = false, redirectUrl = null, pairCode = null)
@@ -314,8 +342,13 @@ class HeartbeatScheduler(
                     "client_clock_midpoint_ms",
                     requestStartedAtMs + ((responseReceivedAtMs - requestStartedAtMs) / 2L),
                 )
-                nativeConfig.put("heartbeat_rtt_ms", responseReceivedAtMs - requestStartedAtMs)
+                nativeConfig.put(
+                    "client_clock_midpoint_elapsed_ms",
+                    requestStartedElapsedMs + (rttMs / 2L),
+                )
+                nativeConfig.put("heartbeat_rtt_ms", rttMs)
             }
+            val syncState = assignment?.optString("sync_state", "")?.trim().orEmpty()
             HeartbeatResult(
                 code = code,
                 bound = json.optBoolean("bound", false),
@@ -324,8 +357,10 @@ class HeartbeatScheduler(
                 playerConfigJson = playerConfig?.toString() ?: json.optJsonString("player_config"),
                 featuresJson = json.optJsonString("features"),
                 nativeVideoWallEnabled = nativeConfig?.optBoolean("enabled", false) ?: false,
+                stagingActive = (nativeConfig?.optBoolean("enabled", false) == true) &&
+                    syncState.equals(VideoWallProAssignment.SYNC_STATE_STAGING, ignoreCase = true),
                 screenId = assignment?.optString("screen_id", "")?.takeIf { it.isNotBlank() },
-                roundTripMs = responseReceivedAtMs - requestStartedAtMs,
+                roundTripMs = rttMs,
             )
         } catch (e: Exception) {
             Log.d(TAG, "heartbeat failed: ${e.message}")
@@ -361,5 +396,6 @@ class HeartbeatScheduler(
     companion object {
         private const val TAG = "Heartbeat"
         private const val HEADER_DEVICE_SECRET = "X-Device-Secret"
+        private const val STAGING_INTERVAL_MS = 1_000L
     }
 }

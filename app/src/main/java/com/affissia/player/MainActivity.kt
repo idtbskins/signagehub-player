@@ -132,6 +132,9 @@ class MainActivity : AppCompatActivity() {
         nativeVideoWallController = NativeVideoWallController(
             context = this,
             playerView = nativeVideoWallView,
+            configStore = configStore,
+            deviceIdentity = deviceIdentity,
+            secretStore = secretStore,
             onNativeActiveChanged = ::setNativeVideoWallVisible,
         )
         val savedConfigAgeMs = System.currentTimeMillis() - remotePlayerConfigStore.updatedAtMs
@@ -568,6 +571,10 @@ class MainActivity : AppCompatActivity() {
             nativeVideoWallView.visibility = View.GONE
             webView.visibility = View.VISIBLE
             webView.bringToFront()
+            webView.evaluateJavascript(
+                "document.querySelectorAll('video').forEach(function(v){if(v.paused&&v.src){v.play().catch(function(){});}});",
+                null,
+            )
         }
     }
 

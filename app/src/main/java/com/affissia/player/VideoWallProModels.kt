@@ -10,13 +10,53 @@ data class VideoWallProAssignment(
     val screenId: String,
     val assetUrl: String,
     val sha256: String,
+    val assetId: String? = null,
     val startAtMillis: Long? = null,
     val serverNowMillis: Long? = null,
     val clientClockMidpointMillis: Long? = null,
+    val clientClockMidpointElapsedMillis: Long? = null,
+    val heartbeatRttMs: Long? = null,
+    val tileReady: Boolean = false,
+    val sliceJobId: String? = null,
+    val syncState: String = SYNC_STATE_GO,
+    val syncOffsetMs: Long = 0L,
+    val rotationDeg: Int = 0,
     val crop: VideoWallCrop = VideoWallCrop(),
 ) {
     val assetSignature: String
         get() = "$sha256:${assetUrl.trim()}"
+
+    /**
+     * Identifies the local media file + visual geometry. Intentionally excludes
+     * [syncState] and [startAtMillis] so transitioning from `staging` -> `go`
+     * reuses the already-downloaded, pre-decoded ExoPlayer instance without
+     * re-buffering or flashing black.
+     */
+    val mediaSignature: String
+        get() = "$assetSignature:$tileReady:$rotationDeg:${crop.x}:${crop.y}:${crop.w}:${crop.h}"
+
+    val isStaging: Boolean
+        get() = syncState.equals(SYNC_STATE_STAGING, ignoreCase = true)
+
+    val isGo: Boolean
+        get() = !isStaging
+
+    /**
+     * Shared identifier across all screens participating in the same video-wall
+     * playback so LAN Master/Slave beacons only synchronize peers of the same wall.
+     */
+    val wallSyncKey: String
+        get() {
+            val base = sliceJobId?.takeIf { it.isNotBlank() }
+                ?: assetId?.takeIf { it.isNotBlank() }
+                ?: sha256
+            return "$base:${startAtMillis ?: 0L}"
+        }
+
+    companion object {
+        const val SYNC_STATE_STAGING = "staging"
+        const val SYNC_STATE_GO = "go"
+    }
 }
 
 data class VideoWallCrop(
@@ -86,20 +126,95 @@ object VideoWallProManifestParser {
         val sha256 = source.requiredCleanString("sha256").lowercase(Locale.US)
         require(SHA256_PATTERN.matches(sha256)) { "sha256 must be 64 hex characters" }
 
+        val rawSyncState = source.optCleanString("sync_state")
+            ?: VideoWallProAssignment.SYNC_STATE_GO
+        val normalizedSyncState = when (rawSyncState.lowercase(Locale.US)) {
+            VideoWallProAssignment.SYNC_STATE_STAGING -> VideoWallProAssignment.SYNC_STATE_STAGING
+            else -> VideoWallProAssignment.SYNC_STATE_GO
+        }
+
+        val rawRotation = source.optInt("rotation_deg", 0)
+        val rotationDeg = if (rawRotation in VALID_ROTATIONS) rawRotation else 0
+
         return VideoWallProAssignment(
             screenId = screenId,
             assetUrl = assetUrl,
             sha256 = sha256,
+            assetId = source.optCleanString("asset_id"),
             startAtMillis = source.optEpochMillis("start_at"),
             serverNowMillis = source.optEpochMillis("server_now"),
+            tileReady = source.optBoolean("tile_ready", false),
+            sliceJobId = source.optCleanString("slice_job_id"),
+            syncState = normalizedSyncState,
+            syncOffsetMs = source.optLongOrZero("sync_offset_ms"),
+            rotationDeg = rotationDeg,
             crop = source.optVideoWallCrop(),
         )
+    }
+
+    /**
+     * Parses epoch milliseconds or ISO-8601 timestamps (including Python
+     * microsecond strings such as `2026-11-20T12:00:05.123456+00:00` or
+     * SQLite-style `2026-11-20 12:00:05.123`).
+     */
+    fun parseTimestampMillis(raw: String): Long {
+        val trimmed = raw.trim()
+        trimmed.toLongOrNull()?.let { return it }
+
+        val normalized = normalizeIsoTimestamp(trimmed)
+        for (format in TIMESTAMP_FORMATS) {
+            val position = ParsePosition(0)
+            val parsed = synchronized(format) {
+                format.parse(normalized, position)
+            }
+            if (parsed != null && position.index == normalized.length) {
+                return parsed.time
+            }
+        }
+        throw IllegalArgumentException("Unsupported timestamp: $raw")
+    }
+
+    private fun normalizeIsoTimestamp(raw: String): String {
+        var value = raw
+        if (value.length >= 19 && value[10] == ' ') {
+            value = value.substring(0, 10) + "T" + value.substring(11)
+        }
+        val match = FRACTIONAL_SECONDS_PATTERN.matchEntire(value)
+        if (match != null) {
+            val prefix = match.groupValues[1]
+            val frac = match.groupValues[2]
+            val tz = match.groupValues[3].ifEmpty { "Z" }
+            val millis = when {
+                frac.length == 3 -> frac
+                frac.length > 3 -> frac.substring(0, 3)
+                else -> frac.padEnd(3, '0')
+            }
+            return "$prefix.$millis$tz"
+        }
+        if (NO_TZ_DATETIME_PATTERN.matches(value)) {
+            return "${value}Z"
+        }
+        return value
     }
 
     private fun JSONObject.requiredCleanString(name: String): String {
         val value = optString(name, "").trim()
         require(value.isNotBlank()) { "$name is required" }
         return value
+    }
+
+    private fun JSONObject.optCleanString(name: String): String? {
+        if (!has(name) || isNull(name)) return null
+        return optString(name, "").trim().takeIf { it.isNotBlank() }
+    }
+
+    private fun JSONObject.optLongOrZero(name: String): Long {
+        if (!has(name) || isNull(name)) return 0L
+        return when (val value = opt(name)) {
+            is Number -> value.toLong()
+            is String -> value.trim().toLongOrNull() ?: 0L
+            else -> 0L
+        }
     }
 
     private fun JSONObject.optEpochMillis(name: String): Long? {
@@ -124,21 +239,12 @@ object VideoWallProManifestParser {
         ).takeIf { it.isValid } ?: VideoWallCrop()
     }
 
-    private fun parseTimestampMillis(raw: String): Long {
-        raw.toLongOrNull()?.let { return it }
-        for (format in TIMESTAMP_FORMATS) {
-            val position = ParsePosition(0)
-            val parsed = synchronized(format) {
-                format.parse(raw, position)
-            }
-            if (parsed != null && position.index == raw.length) {
-                return parsed.time
-            }
-        }
-        throw IllegalArgumentException("Unsupported timestamp: $raw")
-    }
-
+    private val VALID_ROTATIONS = setOf(0, 90, 180, 270)
     private val SHA256_PATTERN = Regex("^[0-9a-f]{64}$")
+    private val FRACTIONAL_SECONDS_PATTERN =
+        Regex("^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})\\.(\\d+)([Zz]|[+-]\\d{2}:?\\d{2})?$")
+    private val NO_TZ_DATETIME_PATTERN =
+        Regex("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$")
 
     private val TIMESTAMP_FORMATS: List<SimpleDateFormat> = listOf(
         "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",

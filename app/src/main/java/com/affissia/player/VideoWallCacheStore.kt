@@ -8,8 +8,14 @@ import java.net.URL
 import java.security.MessageDigest
 import java.util.Locale
 
-class VideoWallCacheStore(context: Context) {
-    private val rootDir: File = File(context.applicationContext.cacheDir, CACHE_SUBDIR)
+class VideoWallCacheStore internal constructor(
+    private val rootDir: File,
+    private val maxBytes: Long = DEFAULT_MAX_CACHE_BYTES,
+    private val maxFiles: Int = DEFAULT_MAX_CACHE_FILES,
+) {
+    constructor(context: Context) : this(
+        rootDir = File(context.applicationContext.cacheDir, CACHE_SUBDIR),
+    )
 
     fun readyStatusFor(assignment: VideoWallProAssignment): VideoWallReadyStatus {
         val target = cachedFileFor(assignment)
@@ -31,13 +37,19 @@ class VideoWallCacheStore(context: Context) {
             safeDelete(target)
             return VideoWallReadyStatus.notReady(assignment, "cache_sha256_mismatch")
         }
+        // Touch mtime so actively played slices stay protected by LRU eviction.
+        try {
+            target.setLastModified(System.currentTimeMillis())
+        } catch (_: Exception) {
+            // no-op
+        }
         return VideoWallReadyStatus.ready(assignment, target.absolutePath)
     }
 
     /**
-     * Performs network and disk IO on the caller's thread. This class is
-     * deliberately not wired into Activity playback; callers can decide
-     * whether and when to prefetch.
+     * Performs network and disk IO on the caller's thread. Downloads atomically
+     * to a `.tmp` file, verifies SHA-256 on the fly, renames into place, and
+     * enforces LRU disk budget so low-storage TV boxes never fill up.
      */
     fun downloadToCache(
         assignment: VideoWallProAssignment,
@@ -94,6 +106,12 @@ class VideoWallCacheStore(context: Context) {
                 safeDelete(tmp)
                 return VideoWallReadyStatus.notReady(assignment, "cache_rename_failed")
             }
+            try {
+                target.setLastModified(System.currentTimeMillis())
+            } catch (_: Exception) {
+                // no-op
+            }
+            pruneCache(protectedFile = target)
             VideoWallReadyStatus.ready(assignment, target.absolutePath)
         } catch (e: Exception) {
             safeDelete(tmp)
@@ -109,6 +127,52 @@ class VideoWallCacheStore(context: Context) {
 
     fun clear(assignment: VideoWallProAssignment): Boolean {
         return safeDelete(cachedFileFor(assignment))
+    }
+
+    /**
+     * Evicts oldest cached `.asset` files when total disk usage exceeds
+     * [maxBytes] or file count exceeds [maxFiles], and removes stale `.tmp`
+     * files left behind by interrupted downloads.
+     */
+    fun pruneCache(protectedFile: File? = null, nowMs: Long = System.currentTimeMillis()): Int {
+        if (!rootDir.exists() || !rootDir.isDirectory) return 0
+        val children = rootDir.listFiles() ?: return 0
+        var deletedCount = 0
+        val protectedPath = protectedFile?.absolutePath
+
+        val assetFiles = mutableListOf<File>()
+        for (file in children) {
+            if (!file.isFile) continue
+            if (file.name.endsWith(".tmp")) {
+                if (nowMs - file.lastModified() > STALE_TMP_AGE_MS) {
+                    if (safeDelete(file)) deletedCount++
+                }
+                continue
+            }
+            if (file.name.endsWith(".asset")) {
+                assetFiles += file
+            }
+        }
+
+        assetFiles.sortBy { it.lastModified() }
+        var totalBytes = assetFiles.sumOf { it.length() }
+        var remainingFiles = assetFiles.size
+
+        for (file in assetFiles) {
+            if (totalBytes <= maxBytes && remainingFiles <= maxFiles) {
+                break
+            }
+            if (protectedPath != null && file.absolutePath == protectedPath) {
+                continue
+            }
+            val size = file.length()
+            if (safeDelete(file)) {
+                totalBytes -= size
+                remainingFiles -= 1
+                deletedCount += 1
+            }
+        }
+        return deletedCount
     }
 
     private fun sha256Of(file: File): String {
@@ -143,5 +207,8 @@ class VideoWallCacheStore(context: Context) {
         private const val BUFFER_SIZE = 64 * 1024
         private const val DEFAULT_CONNECT_TIMEOUT_MS = 15_000
         private const val DEFAULT_READ_TIMEOUT_MS = 30_000
+        const val DEFAULT_MAX_CACHE_BYTES = 500L * 1024L * 1024L
+        const val DEFAULT_MAX_CACHE_FILES = 12
+        private const val STALE_TMP_AGE_MS = 10L * 60L * 1000L
     }
 }
