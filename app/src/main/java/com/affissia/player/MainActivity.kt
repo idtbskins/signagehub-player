@@ -541,9 +541,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val currentUrl = webView.url ?: lastRemoteUrl
-        if (!currentUrl.contains("/display/new")) {
-            return
-        }
         val targetUrl = buildDisplayUrl(configStore.serverUrl)
         if (targetUrl != currentUrl) {
             lastRemoteUrl = targetUrl

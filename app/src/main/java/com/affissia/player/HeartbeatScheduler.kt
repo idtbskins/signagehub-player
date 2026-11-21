@@ -246,7 +246,7 @@ class HeartbeatScheduler(
                 } else {
                     bound = false
                     val pairCode = result.pairCode
-                    if (!pairCode.isNullOrBlank() && configStore.pairCode != pairCode) {
+                    if (!pairCode.isNullOrBlank()) {
                         configStore.pairCode = pairCode
                         mainHandler.post { onPairCodeProvider(pairCode) }
                     }
